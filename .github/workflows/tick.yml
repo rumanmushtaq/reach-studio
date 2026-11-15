@@ -1,0 +1,13 @@
+# Calls the studio's job runner every 15 minutes (backup to cron-job.org; GitHub may run it a few minutes late).
+# Set repository secrets STUDIO_URL (e.g. https://reach-studio.vercel.app) and CRON_SECRET.
+name: tick
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - run: curl -fsS --max-time 310 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.STUDIO_URL }}/api/cron/tick"
