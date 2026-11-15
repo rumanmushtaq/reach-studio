@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
+import { formatSlot, slotProblem } from '@/lib/slots';
+import { SlotPicker, type Taken } from './SlotPicker';
 import { useToast } from './ui';
 
 // Adding a video: read it in the browser (length, shape, 4 frames for Claude, a thumbnail),
@@ -68,11 +70,13 @@ function titleFromFile(n: string) {
   return n.replace(/\.[^.]+$/, '').replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase()) || 'New cartoon';
 }
 
-export function AddVideo({ nextFree }: { nextFree: string }) {
+export function AddVideo({ nextFree, taken, now }: { nextFree: number | null; taken: Taken[]; now: number }) {
   const router = useRouter();
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [note, setNote] = useState('');
+  const [when, setWhen] = useState<'auto' | 'pick'>('auto');
+  const [picked, setPicked] = useState<number | null>(null);
   const [over, setOver] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -81,8 +85,16 @@ export function AddVideo({ nextFree }: { nextFree: string }) {
   async function add(files: File[]) {
     const vids = files.filter((f) => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name));
     if (!vids.length) return toast('Choose a video file (mp4, mov or webm).');
+    // A chosen time goes to the first video; any others take the next free daily slots.
+    const chosen = when === 'pick' ? picked : null;
+    if (when === 'pick') {
+      const problem = slotProblem(picked, taken, Date.now());
+      if (problem) return toast(problem);
+    }
     const text = vids.length === 1 ? note.trim() : '';
     setNote('');
+    setWhen('auto');
+    setPicked(null);
     const base = items.length;
     setItems((list) => [...list, ...vids.map((f) => ({ name: titleFromFile(f.name), progress: 0, stage: 'Waiting…' }))]);
     // One after another, so slots are booked in the order the videos were added.
@@ -97,6 +109,7 @@ export function AddVideo({ nextFree }: { nextFree: string }) {
           body: JSON.stringify({
             name: titleFromFile(file.name), note: text, fileName: file.name, size: file.size, mime: file.type || 'video/mp4',
             duration: meta.duration, width: meta.width, height: meta.height, frames: meta.frames.length,
+            slotAt: k === 0 ? chosen : null,
           }),
         });
         const links = await res.json();
@@ -127,6 +140,25 @@ export function AddVideo({ nextFree }: { nextFree: string }) {
         <label htmlFor="addnote">What happens in it? (optional, helps Claude)</label>
         <input className="input" id="addnote" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Leo finds a magic lamp in the old bazaar" />
       </div>
+      <fieldset className="field when">
+        <legend className="lbl">When to post</legend>
+        <div className="toggles">
+          <label className="tog">
+            <input type="radio" name="when" checked={when === 'auto'} onChange={() => setWhen('auto')} />
+            Next free slot{nextFree ? ` · ${formatSlot(nextFree)}` : ''}
+          </label>
+          <label className="tog">
+            <input type="radio" name="when" checked={when === 'pick'} onChange={() => { setWhen('pick'); setPicked((p) => p ?? nextFree); }} />
+            Pick date and time
+          </label>
+        </div>
+        {when === 'pick' && (
+          <>
+            <SlotPicker value={picked} onChange={setPicked} taken={taken} now={now} idPrefix="add" />
+            <span className="small muted">Adding several videos at once? The first one takes this time; the rest take the next free slots.</span>
+          </>
+        )}
+      </fieldset>
       <div
         className={`drop ${over ? 'over' : ''}`}
         role="button"
@@ -138,7 +170,9 @@ export function AddVideo({ nextFree }: { nextFree: string }) {
         onDrop={(e) => { e.preventDefault(); setOver(false); void add([...e.dataTransfer.files]); }}
       >
         <b>Drop your cartoon here</b>
-        <span className="muted small">or click to choose a file. It takes the next free slot: {nextFree}.</span>
+        <span className="muted small">
+          or click to choose a file. {when === 'pick' && picked ? `It goes live ${formatSlot(picked)}.` : `It takes the next free slot: ${nextFree ? formatSlot(nextFree) : 'add a daily time in Settings'}.`}
+        </span>
       </div>
       <input ref={input} type="file" accept="video/*" multiple hidden onChange={(e) => { void add([...(e.target.files ?? [])]); e.target.value = ''; }} />
       {active.length > 0 && (

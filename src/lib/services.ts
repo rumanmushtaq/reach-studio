@@ -51,7 +51,11 @@ export async function runPost(post: PostRow, now: number): Promise<void> {
     repo.updatePost(post.id, { state: 'failed', lastError: message, lockedUntil: null, ...(keepExternal ? {} : { externalId: null }) });
 
   const video = await repo.getVideo(post.videoId);
-  if (!video || !video.seo || !video.slotAt) return void (await fail('The video is missing its SEO or slot.'));
+  if (!video || !video.slotAt) return void (await fail('The video is missing its slot.'));
+  // A picked time is booked before the upload and SEO finish: wait for them instead of failing.
+  if (video.uploadState !== 'ready' || video.seoState !== 'ready' || !video.seo) {
+    return void (await repo.updatePost(post.id, { runAt: now + 5 * 60_000, lockedUntil: null }));
+  }
   if (video.fileDeletedAt && post.state === 'waiting') return void (await fail('The video file was already deleted.'));
   const account = await repo.getAccount(post.platform);
   if (!account) return void (await fail(`${PLATFORM_NAMES[post.platform]} is not connected. Connect it in Accounts, then press Retry.`));

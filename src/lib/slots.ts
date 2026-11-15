@@ -55,7 +55,43 @@ export function freeSlots(opts: { times: string[]; taken: Iterable<number>; now:
 }
 
 export function canBook(slot: number, taken: Iterable<number>, now: number): boolean {
-  return slot - now >= MIN_AHEAD && !new Set(taken).has(slot);
+  return isQuarterHour(slot) && slot - now >= MIN_AHEAD && !new Set(taken).has(slot);
+}
+
+/** The job runner ticks every 15 minutes, so a chosen time must sit on a quarter hour. */
+export function isQuarterHour(ms: number): boolean {
+  return Number.isInteger(ms) && ms % (15 * MINUTE) === 0;
+}
+
+/** "2026-11-17" + "19:00" in Pakistan time → epoch ms. Null for an invalid date or a time off the quarter hour. */
+export function fromPkt(date: string, hhmm: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m || !isValidTime(hhmm)) return null;
+  const day = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (new Date(day).getUTCDate() !== Number(m[3])) return null; // e.g. 31 Nov
+  return at(day - PKT_OFFSET, hhmm);
+}
+
+/** Epoch ms → "2026-11-17" in Pakistan time, for date inputs. */
+export function pktDate(ms: number): string {
+  return new Date(ms + PKT_OFFSET).toISOString().slice(0, 10);
+}
+
+/** Epoch ms → "19:00" in Pakistan time. */
+export function pktTime(ms: number): string {
+  return new Date(ms + PKT_OFFSET).toISOString().slice(11, 16);
+}
+
+/** Every quarter hour of the day, "00:00" … "23:45". */
+export const QUARTER_HOURS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
+
+/** Why a chosen time cannot be booked, or null when it can. */
+export function slotProblem(slot: number | null, taken: { slotAt: number; name: string }[], now: number): string | null {
+  if (slot === null || !isQuarterHour(slot)) return 'Pick a date and a time.';
+  if (slot - now < MIN_AHEAD) return 'Pick a time at least 1 hour from now.';
+  const other = taken.find((t) => t.slotAt === slot);
+  if (other) return `${other.name} is already posting at this time.`;
+  return null;
 }
 
 const slotFmt = new Intl.DateTimeFormat('en-GB', {

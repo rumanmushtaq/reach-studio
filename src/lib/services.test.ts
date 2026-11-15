@@ -184,4 +184,35 @@ describe('job runner', { timeout: 120_000 }, () => {
     expect(ig.state).toBe('failed');
     expect(ig.lastError).toBe('Instagram is not connected. Connect it in Accounts, then press Retry.');
   });
+
+  it('keeps a picked time, and holds its posts until the SEO is written', async () => {
+    setNow(START);
+    const picked = slots.fromPkt('2026-11-15', '15:30')!; // today 3:30 PM, picked at upload
+    const base = (await repo.getVideo('v1'))!;
+    await repo.insertVideo({
+      ...base, id: 'v4', name: 'Picked Time', slotAt: picked, seo: null, seoSource: null, seoNote: null,
+      seoState: 'working', seoStartedAt: START, seoAt: null, fileDeletedAt: null, fileKey: 'videos/v4/video.mp4',
+    });
+    await repo.resetPosts('v4'); // what the upload-finished route does for a picked time
+    const yt = () => repo.listPosts(['v4']).then((ps) => ps.find((p) => p.platform === 'youtube')!);
+    expect((await yt()).runAt).toBe(START); // early upload is already due: 3:30 PM minus 6 hours is in the past
+
+    // SEO still being written: the due post waits instead of failing.
+    calls.length = 0;
+    await svc.tick();
+    expect(calls.filter((c) => c.startsWith('youtube'))).toEqual([]);
+    expect(await yt()).toMatchObject({ state: 'waiting', runAt: START + 5 * slots.MINUTE, attempts: 0, lastError: null });
+    expect(await status('v4')).toBe('Writing SEO…');
+
+    // The SEO finishes; the picked time is not replaced by a daily slot.
+    await repo.updateVideo('v4', { seoState: 'pending' });
+    await svc.tick();
+    expect((await repo.getVideo('v4'))!).toMatchObject({ seoState: 'ready', slotAt: picked });
+
+    // Five minutes later the upload runs, scheduled for the picked time.
+    setNow(START + 5 * slots.MINUTE);
+    await svc.tick();
+    expect(calls).toContain('youtube:waiting');
+    expect(await yt()).toMatchObject({ state: 'scheduled', runAt: picked });
+  });
 });

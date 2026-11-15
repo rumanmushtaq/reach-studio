@@ -7,16 +7,17 @@ import { deleteVideo, moveSlot, retry, rewriteSeo, saveSeo, saveVideoInfo, setPl
 import type { PostRow, VideoRow } from '@/lib/db/schema';
 import { videoStatus } from '@/lib/plan';
 import { FIELDS, fieldUse, linksBlock, PLATFORM_NAMES, PLATFORMS, splitList, toHashtags, type Links, type Platform, type Seo } from '@/lib/seo';
-import { EARLY_UPLOAD, formatSlot } from '@/lib/slots';
+import { EARLY_UPLOAD, formatSlot, slotProblem } from '@/lib/slots';
+import { SlotPicker, type Taken } from './SlotPicker';
 import { ConfirmButton, Pill, Thumb, useToast } from './ui';
 import { duration } from './VideoRow';
 
 type Props = {
-  video: VideoRow; posts: PostRow[]; thumb?: string; free: number[]; now: number;
+  video: VideoRow; posts: PostRow[]; thumb?: string; free: number[]; taken: Taken[]; now: number;
   connected: Record<Platform, string | null>; links: Links;
 };
 
-export function VideoDetail({ video, posts, thumb, free, now, connected, links }: Props) {
+export function VideoDetail({ video, posts, thumb, free, taken, now, connected, links }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
@@ -57,7 +58,7 @@ export function VideoDetail({ video, posts, thumb, free, now, connected, links }
           <h2>Posting slot</h2>
           <dl className="kv"><dt>Goes live</dt><dd className="mono"><b>{formatSlot(video.slotAt)}</b></dd><dt>Time zone</dt><dd>Pakistan (PKT)</dd></dl>
           {anyLive ? <p className="small muted">This video is live, so its slot is fixed.</p> : video.slotAt ? (
-            <SlotMover free={free} pending={pending} onMove={(ms) => run(() => moveSlot(video.id, ms))} />
+            <SlotMover free={free} taken={taken.filter((t) => t.slotAt !== video.slotAt)} now={now} pending={pending} onMove={(ms) => run(() => moveSlot(video.id, ms))} />
           ) : <p className="small muted">The slot is booked as soon as the SEO is ready.</p>}
         </div>
 
@@ -142,18 +143,30 @@ function InfoCard({ video, thumb, onSave }: { video: VideoRow; thumb?: string; o
   );
 }
 
-function SlotMover({ free, pending, onMove }: { free: number[]; pending: boolean; onMove: (ms: number) => void }) {
+function SlotMover({ free, taken, now, pending, onMove }: {
+  free: number[]; taken: Taken[]; now: number; pending: boolean; onMove: (ms: number) => void;
+}) {
+  const [how, setHow] = useState<'free' | 'pick'>('free');
   const [sel, setSel] = useState('');
+  const [picked, setPicked] = useState<number | null>(free[0] ?? null);
+  const target = how === 'free' ? (sel ? Number(sel) : null) : picked;
+  const blocked = how === 'pick' ? !!slotProblem(picked, taken, now) : !sel;
   return (
     <div className="field">
-      <label htmlFor="move">Move to another free slot</label>
-      <div className="inline">
-        <select className="input" id="move" value={sel} onChange={(e) => setSel(e.target.value)}>
+      <span className="lbl">Change the time</span>
+      <div className="toggles">
+        <label className="tog"><input type="radio" name="how" checked={how === 'free'} onChange={() => setHow('free')} />Next free slots</label>
+        <label className="tog"><input type="radio" name="how" checked={how === 'pick'} onChange={() => setHow('pick')} />Pick date and time</label>
+      </div>
+      {how === 'free' ? (
+        <select className="input" id="move" aria-label="Free slot" value={sel} onChange={(e) => setSel(e.target.value)}>
           <option value="">Choose a free slot…</option>
           {free.map((ms) => <option key={ms} value={ms}>{formatSlot(ms)}</option>)}
         </select>
-        <button className="btn sm" disabled={!sel || pending} onClick={() => onMove(Number(sel))}>Move</button>
-      </div>
+      ) : (
+        <SlotPicker value={picked} onChange={setPicked} taken={taken} now={now} idPrefix="move" />
+      )}
+      <div><button className="btn sm" disabled={blocked || pending} onClick={() => target && onMove(target)}>Move</button></div>
     </div>
   );
 }

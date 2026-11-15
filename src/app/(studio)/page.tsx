@@ -32,7 +32,11 @@ export default async function VideosPage() {
         <div className="stat"><span className="k">Next free slot</span><span className="v">{free[0] ? formatSlot(free[0]) : '–'}</span><span className="small muted">{free[1] ? `then ${formatSlot(free[1])}` : ''}</span></div>
         <div className="stat"><span className="k">Free in next 7 days</span><span className="v">{weekFree} slot{weekFree === 1 ? '' : 's'}</span><span className="small muted">Daily at {d.settings.times.map(timeLabel).join(', ')}</span></div>
       </div>
-      <AddVideo nextFree={free[0] ? formatSlot(free[0]) : 'add a daily time in Settings'} />
+      <AddVideo
+        nextFree={free[0] ?? null}
+        taken={d.videos.filter((v) => v.slotAt).map((v) => ({ slotAt: v.slotAt!, name: v.name }))}
+        now={d.now}
+      />
       <div className="section-h"><h2>Coming up</h2><span className="small muted">{upcoming.length} video{upcoming.length === 1 ? '' : 's'}</span></div>
       <div className="list">
         {upcoming.length

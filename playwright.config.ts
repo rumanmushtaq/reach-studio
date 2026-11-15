@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-// Runs against a dev server you start yourself (npm run dev). One worker: the laptop has little memory.
+// Runs against a dev server you start yourself (npm run dev) on an empty ./data folder.
+// One worker: the laptop has little memory.
 export default defineConfig({
   testDir: 'e2e',
   workers: 1,

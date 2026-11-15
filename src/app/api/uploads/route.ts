@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { newId } from '@/lib/crypto';
-import { insertVideo } from '@/lib/repo';
+import { insertVideo, takenSlots } from '@/lib/repo';
 import { defaultPlatforms } from '@/lib/seo';
+import { canBook } from '@/lib/slots';
 import { uploadUrl } from '@/lib/storage';
 
 // Step 1 of adding a video: the browser describes the file and gets upload links back.
@@ -17,6 +18,8 @@ const Body = z.object({
   width: z.number().int().positive().nullable(),
   height: z.number().int().positive().nullable(),
   frames: z.number().int().min(0).max(4),
+  // A time the owner picked. Null: the next free daily slot is booked after the SEO is written.
+  slotAt: z.number().int().nullable().default(null),
 });
 
 const EXT: Record<string, string> = { 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/x-matroska': 'mkv' };
@@ -25,6 +28,9 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Some video details are missing.' }, { status: 400 });
   const b = parsed.data;
+  if (b.slotAt !== null && !canBook(b.slotAt, await takenSlots(), Date.now())) {
+    return NextResponse.json({ error: 'That time is taken or too soon. Pick another time.' }, { status: 409 });
+  }
   const id = newId();
   const ext = EXT[b.mime] ?? b.fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? 'mp4';
   const fileKey = `videos/${id}/video.${ext}`;
@@ -32,13 +38,18 @@ export async function POST(req: Request) {
   const thumbKey = b.frames ? `videos/${id}/thumb.jpg` : null;
   const shape = b.width && b.height && b.height > b.width ? 'vertical' : 'horizontal';
 
-  await insertVideo({
-    id, name: b.name, note: b.note, fileName: b.fileName, fileKey, fileSize: b.size, mime: b.mime || 'video/mp4',
-    duration: b.duration, width: b.width, height: b.height, shape, thumbKey, frameKeys,
-    platforms: defaultPlatforms(shape, b.duration), uploadState: 'uploading',
-    seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null,
-    slotAt: null, fileDeletedAt: null, createdAt: Date.now(),
-  });
+  // The chosen time is reserved now, so no other video can take it while this one uploads.
+  try {
+    await insertVideo({
+      id, name: b.name, note: b.note, fileName: b.fileName, fileKey, fileSize: b.size, mime: b.mime || 'video/mp4',
+      duration: b.duration, width: b.width, height: b.height, shape, thumbKey, frameKeys,
+      platforms: defaultPlatforms(shape, b.duration), uploadState: 'uploading',
+      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null,
+      slotAt: b.slotAt, fileDeletedAt: null, createdAt: Date.now(),
+    });
+  } catch {
+    return NextResponse.json({ error: 'That time was just taken. Pick another time.' }, { status: 409 });
+  }
 
   return NextResponse.json({
     id,

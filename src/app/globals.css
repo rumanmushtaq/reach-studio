@@ -200,3 +200,6 @@ a { color: inherit; }
 .rail .logout { all: unset; cursor: pointer; color: var(--rail-muted); font-size: 0.8rem; padding: 8px 12px; }
 .rail .logout:hover { color: var(--rail-ink); }
 @media (max-width: 780px) { .rail form { margin-top: 0; } }
+.when { border: 0; padding: 0; margin: 0; min-width: 0; }
+.when legend { margin-bottom: 6px; }
+.field label.tog { text-transform: none; letter-spacing: 0; font-size: 0.9rem; font-weight: 400; color: var(--ink); justify-content: flex-start; }

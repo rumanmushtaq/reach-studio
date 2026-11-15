@@ -1,5 +1,5 @@
 import { after, NextResponse } from 'next/server';
-import { getVideo, updateVideo } from '@/lib/repo';
+import { getVideo, resetPosts, updateVideo } from '@/lib/repo';
 import { runSeo } from '@/lib/services';
 import { fileSize } from '@/lib/storage';
 
@@ -13,6 +13,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const size = await fileSize(video.fileKey);
   if (!size) return NextResponse.json({ error: 'The upload did not reach storage. Try adding the video again.' }, { status: 409 });
   await updateVideo(id, { uploadState: 'ready', fileSize: size });
+  // A time the owner picked is already booked: plan its posts now. They wait until the SEO is ready.
+  if (video.slotAt) await resetPosts(id);
   // Runs after the response; if it is cut off, the job runner finishes it on its next tick.
   after(() => runSeo(id));
   return NextResponse.json({ ok: true });

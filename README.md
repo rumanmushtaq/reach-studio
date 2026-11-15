@@ -11,7 +11,9 @@ the video to YouTube, Facebook, Instagram and TikTok at that time. Your laptop c
    current kids' cartoon search words, and writes Urdu + English text for each platform (about a minute).
    Without a Claude key the studio writes a basic draft.
 3. **Slot**: right after the SEO is ready, the video takes the next free daily slot (Pakistan time).
-   Move it on the Calendar or the Free slots page.
+   Or choose **Pick date and time** when you add it: that time is reserved straight away, and its posts
+   wait until the SEO is written. Move a video later on its page (any date and time), the Calendar or
+   the Free slots page.
 4. **Posting**:
    - 6 hours before the slot, YouTube and Facebook get the video, scheduled to go public at the slot.
    - 1 hour before, Instagram gets the Reel to process.

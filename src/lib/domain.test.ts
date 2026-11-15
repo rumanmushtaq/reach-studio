@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { firstRunAt, postsToReset, shouldDeleteFile, videoStatus, type PostLike, type VideoLike } from './plan';
 import { defaultPlatforms, draftSeo, fieldUse, FIELDS, normaliseSeo, toHashtags } from './seo';
-import { at, canBook, dayStart, formatDay, formatSlot, freeSlots, HOUR, isValidTime, DAY } from './slots';
+import { at, canBook, dayStart, formatDay, formatSlot, freeSlots, fromPkt, HOUR, isValidTime, DAY, MINUTE, pktDate, pktTime, slotProblem } from './slots';
 
 // Sun 15 Nov 2026, 2:00 PM Pakistan time
 const NOW = Date.UTC(2026, 10, 15, 9, 0);
@@ -32,6 +32,25 @@ describe('slots', () => {
     const sat7pm = at(dayStart(NOW), '19:00') + 6 * DAY;
     expect(formatDay(sat7pm)).toBe('Sat 21 Nov');
     expect(formatDay(dayStart(sat7pm))).toBe('Sat 21 Nov');
+  });
+
+  it('turns a picked date and time (Pakistan time) into a slot and back', () => {
+    const ms = fromPkt('2026-11-17', '19:45')!;
+    expect(new Date(ms).toISOString()).toBe('2026-11-17T14:45:00.000Z');
+    expect(formatSlot(ms)).toBe('Tue 17 Nov 7:45 PM');
+    expect([pktDate(ms), pktTime(ms)]).toEqual(['2026-11-17', '19:45']);
+    expect(fromPkt('2026-11-31', '19:00')).toBeNull();
+    expect(fromPkt('2026-11-17', '19:10')).toBeNull();
+    expect(fromPkt('', '19:00')).toBeNull();
+  });
+
+  it('explains why a picked time cannot be booked', () => {
+    const ms = fromPkt('2026-11-17', '19:45')!;
+    expect(slotProblem(ms, [], NOW)).toBeNull();
+    expect(slotProblem(ms, [{ slotAt: ms, name: 'Rain Song' }], NOW)).toBe('Rain Song is already posting at this time.');
+    expect(slotProblem(NOW + 30 * MINUTE, [], NOW)).toBe('Pick a time at least 1 hour from now.');
+    expect(slotProblem(null, [], NOW)).toBe('Pick a date and a time.');
+    expect(canBook(ms + 5 * MINUTE, [], NOW)).toBe(false);
   });
 
   it('accepts quarter hours only', () => {

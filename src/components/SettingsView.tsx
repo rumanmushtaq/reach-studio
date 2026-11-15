@@ -4,10 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { addTime, removeTime, saveChannel } from '@/app/actions';
 import { PLATFORM_NAMES, PLATFORMS, type Links } from '@/lib/seo';
-import { timeLabel } from '@/lib/slots';
+import { QUARTER_HOURS, timeLabel } from '@/lib/slots';
 import { useToast } from './ui';
-
-const QUARTERS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
 
 export function SettingsView({ times, channel, niche, links }: { times: string[]; channel: string; niche: string; links: Links }) {
   const router = useRouter();
@@ -37,7 +35,7 @@ export function SettingsView({ times, channel, niche, links }: { times: string[]
         </div>
         <div className="inline">
           <select className="input" value={newTime} onChange={(e) => setNewTime(e.target.value)} aria-label="New daily time">
-            {QUARTERS.map((q) => <option key={q} value={q}>{timeLabel(q)}</option>)}
+            {QUARTER_HOURS.map((q) => <option key={q} value={q}>{timeLabel(q)}</option>)}
           </select>
           <button className="btn sm" disabled={pending} onClick={() => run(() => addTime(newTime))}>Add daily time</button>
         </div>

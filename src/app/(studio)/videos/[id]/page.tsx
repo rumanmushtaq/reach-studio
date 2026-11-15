@@ -15,6 +15,7 @@ export default async function VideoPage({ params }: { params: Promise<{ id: stri
       posts={d.posts.filter((p) => p.videoId === id)}
       thumb={d.thumbs[id]}
       free={freeSlots({ times: d.settings.times, taken, now: d.now, count: 21 })}
+      taken={d.videos.filter((v) => v.slotAt).map((v) => ({ slotAt: v.slotAt!, name: v.name }))}
       now={d.now}
       connected={d.connected}
       links={d.settings.links}
