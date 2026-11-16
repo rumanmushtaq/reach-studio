@@ -14,7 +14,7 @@ const NOTE: Record<Platform, string> = {
   tiktok: 'Through Upload-Post, because TikTok blocks public posts from apps it has not approved.',
 };
 
-export type SetupState = { claude: boolean; r2: boolean; google: boolean; meta: boolean; links: boolean };
+export type SetupState = { claude: boolean; storage: boolean; google: boolean; meta: boolean; links: boolean };
 
 export function AccountsView({ connected, setup, banner }: { connected: Record<Platform, string | null>; setup: SetupState; banner: { ok?: string; error?: string } }) {
   const router = useRouter();
@@ -31,7 +31,7 @@ export function AccountsView({ connected, setup, banner }: { connected: Record<P
 
   const steps: [string, boolean, React.ReactNode][] = [
     ['Claude writes the SEO', setup.claude, 'Set ANTHROPIC_API_KEY (README step 3)'],
-    ['Video storage', setup.r2, 'Set the Cloudflare R2 keys (README step 2)'],
+    ['Video storage', setup.storage, 'Set CLOUDINARY_URL (README step 2)'],
     ...PLATFORMS.map((p): [string, boolean, React.ReactNode] => [`${PLATFORM_NAMES[p]} connected`, !!connected[p], 'Connect it below']),
     ['Channel links for descriptions', setup.links, <Link key="l" href="/settings">Add in Settings</Link>],
   ];

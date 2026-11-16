@@ -41,7 +41,7 @@ cp .env.example .env.local
 ```
 
 Fill in `STUDIO_PASSWORD`, `STUDIO_SECRET`, `CRON_SECRET` and `APP_URL=http://localhost:3100`.
-Leave the database and R2 lines empty: locally the studio uses `./data`.
+Leave the database and storage lines empty: locally the studio uses `./data`.
 
 ```bash
 npm install
@@ -77,11 +77,22 @@ Vercel's Hobby plan is for personal, non-commercial use. When the channel earns 
 
 The tables are created on first use.
 
-### 2. Video storage: Cloudflare R2
+### 2. Video storage: Cloudinary
+
+1. Sign up at cloudinary.com (free plan, no card needed).
+2. Dashboard → **API Keys** (or *Settings → API Keys*) → copy the **API environment variable**
+   (`cloudinary://<api_key>:<api_secret>@<cloud_name>`) into `CLOUDINARY_URL`.
+
+The free plan takes **videos up to 100 MB** and gives 25 credits a month (1 credit = 1 GB stored or
+1 GB downloaded). Export long cartoons at 720p, or a lower bitrate, to stay under 100 MB. Files are
+stored under random names and deleted the day after they are live everywhere.
+
+**Or Cloudflare R2** (no 100 MB limit, 10 GB free, but Cloudflare asks for a card or PayPal):
 
 1. Cloudflare dashboard → **R2** → **Create bucket**, e.g. `reach-studio`.
 2. **R2 → Manage API tokens → Create token** with *Object Read & Write* on that bucket.
-   Put the values in `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET`.
+   Put the values in `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET`,
+   and leave `CLOUDINARY_URL` empty.
 3. Bucket → **Settings → CORS policy**, so the browser can upload directly:
 
 ```json
@@ -137,5 +148,6 @@ can call it too: set the repository secrets `STUDIO_URL` and `CRON_SECRET`.
 - Posting times are on the quarter hour (7:00, 7:15 …) because the job runner runs every 15 minutes.
 - YouTube and Facebook go live at the exact minute. Instagram and TikTok go live within a few minutes
   of the slot.
-- R2's free tier is 10 GB. With next-day cleanup, a week of long cartoons booked ahead fits easily.
+- Cloudinary's free plan: videos up to 100 MB each, 25 credits a month. R2's free tier: 10 GB, any size.
+  With next-day cleanup, a week of cartoons booked ahead fits easily.
 - If you remove a video after it was uploaded early, delete it on YouTube or Facebook too.

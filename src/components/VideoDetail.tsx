@@ -198,7 +198,7 @@ function Preview({ video, tab, seo, thumb, customThumb, connected, channel, link
     try {
       const r = await thumbnailUploadUrl(video.id, f.type);
       if (!r.ok) return toast(r.error);
-      await put(r.url, f, f.type).done;
+      await put(r.target, f, f.type).done;
       run(() => setCustomThumb(video.id, r.key));
     } catch (err) {
       toast((err as Error).message);

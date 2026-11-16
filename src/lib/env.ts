@@ -16,7 +16,10 @@ export const env = {
 
   get ANTHROPIC_API_KEY() { return read('ANTHROPIC_API_KEY'); },
 
-  // Cloudflare R2. Without these, files go to ./data/files (local dev only).
+  // Cloudinary: cloudinary://<api_key>:<api_secret>@<cloud_name>. Used before R2 when set.
+  get CLOUDINARY_URL() { return read('CLOUDINARY_URL'); },
+
+  // Cloudflare R2. Without these or Cloudinary, files go to ./data/files (local dev only).
   get R2_ACCOUNT_ID() { return read('R2_ACCOUNT_ID'); },
   get R2_ACCESS_KEY_ID() { return read('R2_ACCESS_KEY_ID'); },
   get R2_SECRET_ACCESS_KEY() { return read('R2_SECRET_ACCESS_KEY'); },
@@ -32,7 +35,9 @@ export const env = {
 
 export const has = {
   claude: () => !!env.ANTHROPIC_API_KEY,
+  cloudinary: () => /^cloudinary:\/\/[^:]+:[^@]+@.+/.test(env.CLOUDINARY_URL),
   r2: () => !!(env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET),
   google: () => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
   meta: () => !!(env.META_APP_ID && env.META_APP_SECRET),
+  storage: () => has.cloudinary() || has.r2(),
 };

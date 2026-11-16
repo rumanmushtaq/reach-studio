@@ -5,11 +5,16 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { UploadTarget } from './browser-video';
+import {
+  CLOUDINARY_MAX_VIDEO, cloudinaryBytes, cloudinaryDelete, cloudinaryDeletePrefix, cloudinaryOpen, cloudinaryUploadTarget, cloudinaryUrl,
+} from './cloudinary';
 import { sign } from './crypto';
 import { env, has } from './env';
 
-// Video files live in Cloudflare R2. The browser uploads with a presigned PUT, platforms download with
-// a presigned GET. Without R2 settings (local dev) files go to ./data/files behind signed local links.
+// Video files live in Cloudinary (CLOUDINARY_URL) or Cloudflare R2. The browser uploads straight to
+// storage, platforms download from a public or presigned link. With neither set (local dev) files go to
+// ./data/files behind signed local links.
 
 export const LOCAL_ROOT = path.resolve('data/files');
 
@@ -35,20 +40,33 @@ function localUrl(key: string, method: 'GET' | 'PUT', expiresSec: number): strin
   return `${env.APP_URL}/api/local-files/${key}?m=${method}&exp=${exp}&sig=${sig}`;
 }
 
-/** URL the browser PUTs the file to. */
-export async function uploadUrl(key: string, contentType: string): Promise<string> {
-  if (!has.r2()) return localUrl(key, 'PUT', 6 * 3600);
-  return getSignedUrl(r2(), new PutObjectCommand({ Bucket: env.R2_BUCKET, Key: key, ContentType: contentType }), { expiresIn: 6 * 3600 });
+/** Biggest video the storage accepts, or null for no limit. */
+export function maxVideoBytes(): number | null {
+  return has.cloudinary() ? CLOUDINARY_MAX_VIDEO : null;
+}
+
+/** Free storage on the current plan, for the Storage box. */
+export function freeStorageBytes(): number {
+  return (has.cloudinary() ? 25 : 10) * 1024 ** 3;
+}
+
+/** Where the browser sends the file: a presigned PUT, or a signed form POST for Cloudinary. */
+export async function uploadTarget(key: string, contentType: string): Promise<UploadTarget> {
+  if (has.cloudinary()) return cloudinaryUploadTarget(key);
+  if (!has.r2()) return { url: localUrl(key, 'PUT', 6 * 3600) };
+  return { url: await getSignedUrl(r2(), new PutObjectCommand({ Bucket: env.R2_BUCKET, Key: key, ContentType: contentType }), { expiresIn: 6 * 3600 }) };
 }
 
 /** Time-limited public link: used by Instagram, Facebook and Upload-Post to fetch the video, and for thumbnails. */
 export async function downloadUrl(key: string, expiresSec = 24 * 3600): Promise<string> {
+  if (has.cloudinary()) return cloudinaryUrl(key);
   if (!has.r2()) return localUrl(key, 'GET', expiresSec);
   return getSignedUrl(r2(), new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }), { expiresIn: Math.min(expiresSec, 7 * 24 * 3600) });
 }
 
 export async function fileSize(key: string): Promise<number | null> {
   try {
+    if (has.cloudinary()) return await cloudinaryBytes(key);
     if (!has.r2()) return (await stat(localPath(key))).size;
     const head = await r2().send(new HeadObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
     return head.ContentLength ?? null;
@@ -58,6 +76,7 @@ export async function fileSize(key: string): Promise<number | null> {
 }
 
 export async function openStream(key: string): Promise<Readable> {
+  if (has.cloudinary()) return cloudinaryOpen(key);
   if (!has.r2()) return createReadStream(localPath(key));
   const res = await r2().send(new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
   return res.Body as Readable;
@@ -71,6 +90,7 @@ export async function readBytes(key: string): Promise<Buffer> {
 
 /** Deletes everything under a prefix, e.g. `videos/<id>/`. */
 export async function deletePrefix(prefix: string): Promise<void> {
+  if (has.cloudinary()) return cloudinaryDeletePrefix(prefix);
   if (!has.r2()) {
     await rm(localPath(prefix.replace(/\/$/, '')), { recursive: true, force: true });
     return;
@@ -82,6 +102,7 @@ export async function deletePrefix(prefix: string): Promise<void> {
 
 /** Deletes only the video file, keeping thumbnail and frames for the studio's history. */
 export async function deleteKey(key: string): Promise<void> {
+  if (has.cloudinary()) return cloudinaryDelete(key);
   if (!has.r2()) {
     await rm(localPath(key), { force: true });
     return;

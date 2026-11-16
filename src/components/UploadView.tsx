@@ -21,8 +21,8 @@ const STEPS: { stage: Stage; label: string }[] = [
 ];
 const ORDER: Stage[] = ['read', 'upload', 'seo', 'booked'];
 
-export function UploadView({ nextFree, tonight, weekend, taken, now, preset }: {
-  nextFree: number[]; tonight: number | null; weekend: number[]; taken: Taken[]; now: number; preset: number | null;
+export function UploadView({ nextFree, tonight, weekend, taken, now, preset, maxBytes }: {
+  nextFree: number[]; tonight: number | null; weekend: number[]; taken: Taken[]; now: number; preset: number | null; maxBytes: number | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -57,8 +57,14 @@ export function UploadView({ nextFree, tonight, weekend, taken, now, preset }: {
   }
 
   async function add(files: File[]) {
-    const vids = files.filter((f) => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name));
-    if (!vids.length) return toast('Choose a video file: mp4, mov or webm.');
+    const all = files.filter((f) => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name));
+    if (!all.length) return toast('Choose a video file: mp4, mov or webm.');
+    const vids = maxBytes ? all.filter((f) => f.size <= maxBytes) : all;
+    if (vids.length < all.length) {
+      const big = all.filter((f) => !vids.includes(f)).map((f) => f.name).join(', ');
+      toast(`Over ${maxBytes! / 1024 ** 2} MB, so not added: ${big}. Export smaller (e.g. 720p) and add again.`);
+      if (!vids.length) return;
+    }
     if (mode === 'pick') {
       const problem = slotProblem(picked, taken, Date.now());
       if (problem) return toast(problem);
@@ -129,7 +135,7 @@ export function UploadView({ nextFree, tonight, weekend, taken, now, preset }: {
       >
         <span className="icon"><Icon name="upload" size={28} stroke={2.4} /></span>
         <b>Drop cartoons here, or choose files</b>
-        <span className="small muted">mp4, mov or webm · any length · several at once</span>
+        <span className="small muted">mp4, mov or webm · {maxBytes ? `up to ${maxBytes / 1024 ** 2} MB each` : 'any size'} · several at once</span>
       </button>
       <input ref={input} type="file" accept="video/*" multiple hidden onChange={(e) => { void add([...(e.target.files ?? [])]); e.target.value = ''; }} />
 

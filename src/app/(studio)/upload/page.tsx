@@ -1,5 +1,6 @@
 import { UploadView } from '@/components/UploadView';
 import { freeSlots, tonightSlot, weekendSlots } from '@/lib/slots';
+import { maxVideoBytes } from '@/lib/storage';
 import { studioData } from '@/lib/view';
 
 export default async function UploadPage({ searchParams }: { searchParams: Promise<{ at?: string }> }) {
@@ -14,6 +15,7 @@ export default async function UploadPage({ searchParams }: { searchParams: Promi
       taken={d.videos.filter((v) => v.slotAt).map((v) => ({ slotAt: v.slotAt!, name: v.name }))}
       now={d.now}
       preset={Number.isFinite(at) && at > d.now ? at : null}
+      maxBytes={maxVideoBytes()}
     />
   );
 }

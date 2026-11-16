@@ -24,7 +24,7 @@ export const studioData = cache(async () => {
     thumbs,
     customThumbs,
     connected,
-    setup: { claude: has.claude(), r2: has.r2(), google: has.google(), meta: has.meta() },
+    setup: { claude: has.claude(), storage: has.storage(), google: has.google(), meta: has.meta() },
   };
 });
 

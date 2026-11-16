@@ -4,7 +4,7 @@ import { newId } from '@/lib/crypto';
 import { insertVideo, takenSlots } from '@/lib/repo';
 import { defaultPlatforms } from '@/lib/seo';
 import { canBook } from '@/lib/slots';
-import { uploadUrl } from '@/lib/storage';
+import { maxVideoBytes, uploadTarget } from '@/lib/storage';
 
 // Step 1 of adding a video: the browser describes the file and gets upload links back.
 // The file itself goes straight from the browser to storage, never through this function.
@@ -28,6 +28,10 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Some video details are missing.' }, { status: 400 });
   const b = parsed.data;
+  const max = maxVideoBytes();
+  if (max && b.size > max) {
+    return NextResponse.json({ error: `This file is ${Math.round(b.size / 1024 ** 2)} MB. Cloudinary's free plan takes videos up to ${max / 1024 ** 2} MB: export it smaller (e.g. 720p) and add it again.` }, { status: 413 });
+  }
   if (b.slotAt !== null && !canBook(b.slotAt, await takenSlots(), Date.now())) {
     return NextResponse.json({ error: 'That time is taken or too soon. Pick another time.' }, { status: 409 });
   }
@@ -53,8 +57,8 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     id,
-    video: await uploadUrl(fileKey, b.mime || 'video/mp4'),
-    frames: await Promise.all(frameKeys.map((k) => uploadUrl(k, 'image/jpeg'))),
-    thumb: thumbKey ? await uploadUrl(thumbKey, 'image/jpeg') : null,
+    video: await uploadTarget(fileKey, b.mime || 'video/mp4'),
+    frames: await Promise.all(frameKeys.map((k) => uploadTarget(k, 'image/jpeg'))),
+    thumb: thumbKey ? await uploadTarget(thumbKey, 'image/jpeg') : null,
   });
 }

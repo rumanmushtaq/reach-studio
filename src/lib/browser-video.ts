@@ -1,5 +1,8 @@
 // Browser-only helpers for adding a video: read it (length, shape, frames for Claude, a thumbnail) and upload it.
 
+/** Where a file is uploaded: a presigned PUT link, or a form POST (Cloudinary) when `fields` is set. */
+export type UploadTarget = { url: string; fields?: Record<string, string> };
+
 export type VideoMeta = { duration: number | null; width: number | null; height: number | null; frames: Blob[]; thumb: Blob | null };
 
 function seek(el: HTMLVideoElement, t: number) {
@@ -44,17 +47,31 @@ export function readVideo(file: File): Promise<VideoMeta> {
   });
 }
 
-/** PUT a file to a presigned link with progress. Returns the request so it can be cancelled. */
-export function put(url: string, body: Blob, type: string, onProgress?: (p: number) => void): { done: Promise<void>; abort: () => void } {
+/** Uploads a file with progress. Returns the request so it can be cancelled. */
+export function put(target: UploadTarget, body: Blob, type: string, onProgress?: (p: number) => void): { done: Promise<void>; abort: () => void } {
   const xhr = new XMLHttpRequest();
   const done = new Promise<void>((resolve, reject) => {
-    xhr.open('PUT', url);
-    xhr.setRequestHeader('Content-Type', type);
+    let payload: Blob | FormData = body;
+    if (target.fields) {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(target.fields)) form.append(k, v);
+      form.append('file', body);
+      payload = form;
+      xhr.open('POST', target.url);
+    } else {
+      xhr.open('PUT', target.url);
+      xhr.setRequestHeader('Content-Type', type);
+    }
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
-    xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
+    xhr.onload = () => {
+      if (xhr.status < 300) return resolve();
+      // Cloudinary explains refusals, e.g. a file over the plan's size limit.
+      const why = (() => { try { return JSON.parse(xhr.responseText)?.error?.message as string | undefined; } catch { return undefined; } })();
+      reject(new Error(why ? `Upload failed: ${why}` : `Upload failed (${xhr.status})`));
+    };
     xhr.onerror = () => reject(new Error('Upload failed. Check your internet and try again.'));
     xhr.onabort = () => reject(new Error('Cancelled'));
-    xhr.send(body);
+    xhr.send(payload);
   });
   return { done, abort: () => xhr.abort() };
 }

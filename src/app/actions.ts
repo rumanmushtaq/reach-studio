@@ -12,7 +12,8 @@ import { normaliseSeo, PLATFORMS, type Links, type Platform } from '@/lib/seo';
 import { retryPost, runSeo } from '@/lib/services';
 import { createSession, SESSION_COOKIE } from '@/lib/session';
 import { canBook, isValidTime } from '@/lib/slots';
-import { deletePrefix, deleteKey, fileSize, uploadUrl } from '@/lib/storage';
+import { deletePrefix, deleteKey, fileSize, uploadTarget } from '@/lib/storage';
+import type { UploadTarget } from '@/lib/browser-video';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const ok = (message?: string): Result => ({ ok: true, message });
@@ -134,11 +135,11 @@ export async function deleteVideo(videoId: string): Promise<Result> {
 
 // ---------- custom thumbnail ----------
 
-export async function thumbnailUploadUrl(videoId: string, mime: string): Promise<{ ok: true; url: string; key: string } | { ok: false; error: string }> {
+export async function thumbnailUploadUrl(videoId: string, mime: string): Promise<{ ok: true; target: UploadTarget; key: string } | { ok: false; error: string }> {
   if (!(await repo.getVideo(videoId))) return { ok: false, error: 'This video was removed.' };
   if (mime !== 'image/jpeg' && mime !== 'image/png') return { ok: false, error: 'Use a JPG or PNG image.' };
   const key = `videos/${videoId}/custom-thumb-${Date.now()}.${mime === 'image/png' ? 'png' : 'jpg'}`;
-  return { ok: true, url: await uploadUrl(key, mime), key };
+  return { ok: true, target: await uploadTarget(key, mime), key };
 }
 
 export async function setCustomThumb(videoId: string, key: string): Promise<Result> {
