@@ -1,6 +1,6 @@
 import 'server-only';
 
-// Every setting the studio reads. STUDIO_SECRET, OWNER_EMAILS and the Google client are needed to sign in;
+// Every setting the studio reads. STUDIO_SECRET and CRON_SECRET are needed to sign in;
 // each platform lights up when its own keys are present.
 function read(name: string, fallback = ''): string {
   return process.env[name]?.trim() || fallback;
@@ -8,8 +8,6 @@ function read(name: string, fallback = ''): string {
 
 export const env = {
   get APP_URL() { return read('APP_URL', 'http://localhost:3100').replace(/\/$/, ''); },
-  // Google accounts allowed to sign in, comma separated.
-  get OWNER_EMAILS() { return read('OWNER_EMAILS').toLowerCase().split(',').map((e) => e.trim()).filter(Boolean); },
   get STUDIO_SECRET() { return read('STUDIO_SECRET'); },
   get CRON_SECRET() { return read('CRON_SECRET'); },
   // postgres://… (Supabase) or a PGlite folder path, or memory:// for tests.
