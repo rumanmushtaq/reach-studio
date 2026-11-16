@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       id, name: b.name, note: b.note, fileName: b.fileName, fileKey, fileSize: b.size, mime: b.mime || 'video/mp4',
       duration: b.duration, width: b.width, height: b.height, shape, thumbKey, customThumbKey: null, frameKeys,
       platforms: defaultPlatforms(shape, b.duration), uploadState: 'uploading',
-      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null,
+      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null,
       slotAt: b.slotAt, fileDeletedAt: null, createdAt: Date.now(),
     });
   } catch {
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     id,
-    video: await uploadTarget(fileKey, b.mime || 'video/mp4'),
-    frames: await Promise.all(frameKeys.map((k) => uploadTarget(k, 'image/jpeg'))),
-    thumb: thumbKey ? await uploadTarget(thumbKey, 'image/jpeg') : null,
+    video: await uploadTarget(fileKey),
+    frames: await Promise.all(frameKeys.map((k) => uploadTarget(k))),
+    thumb: thumbKey ? await uploadTarget(thumbKey) : null,
   });
 }

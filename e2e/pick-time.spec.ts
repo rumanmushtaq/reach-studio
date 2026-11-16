@@ -6,8 +6,7 @@ const pktDate = (ms: number) => new Date(ms + 5 * 3600_000).toISOString().slice(
 
 test('pick a date and time when adding, then move it on the video page', async ({ page }) => {
   await page.goto('/login');
-  await page.fill('#password', process.env.STUDIO_PASSWORD ?? 'test-pass-1234');
-  await page.click('button:has-text("Sign in")');
+  await page.getByRole('button', { name: 'Enter studio (local only)' }).click();
   await expect(page.getByRole('link', { name: 'Today' }).first()).toBeVisible();
 
   const in3days = pktDate(Date.now() + 3 * 86400_000);

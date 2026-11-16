@@ -6,11 +6,11 @@ import { verify } from '@/lib/crypto';
 import { has } from '@/lib/env';
 import { ensureLocalDir, localPath } from '@/lib/storage';
 
-// Local dev stand-in for R2 presigned links. Only active when R2 is not configured.
+// Local dev stand-in for Cloudinary links. Only active when Cloudinary is not configured.
 export const dynamic = 'force-dynamic';
 
 function check(req: Request, key: string, method: 'GET' | 'PUT'): boolean {
-  if (has.r2()) return false;
+  if (has.cloudinary()) return false;
   const q = new URL(req.url).searchParams;
   const exp = Number(q.get('exp'));
   return q.get('m') === method && exp * 1000 > Date.now() && verify(`${method}:${key}:${exp}`, q.get('sig') ?? '');

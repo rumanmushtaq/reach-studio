@@ -15,16 +15,18 @@ export const studioData = cache(async () => {
     if (v.thumbKey) thumbs[v.id] = await downloadUrl(v.thumbKey, 3600);
     if (v.customThumbKey) customThumbs[v.id] = await downloadUrl(v.customThumbKey, 3600);
   }));
+  const now = Date.now();
   const connected = Object.fromEntries(PLATFORMS.map((p) => [p, accounts.find((a) => a.platform === p)?.name ?? null])) as Record<Platform, string | null>;
   return {
-    now: Date.now(),
+    now,
     settings,
     videos,
     posts,
     thumbs,
     customThumbs,
     connected,
-    setup: { claude: has.claude(), storage: has.storage(), google: has.google(), meta: has.meta() },
+    // The Claude helper on the laptop counts as running when it called in the last 5 minutes.
+    setup: { claude: !!settings.helperSeenAt && now - settings.helperSeenAt < 5 * 60_000, storage: has.storage(), google: has.google(), meta: has.meta() },
   };
 });
 

@@ -1,6 +1,6 @@
 import { jwtVerify, SignJWT } from 'jose';
 
-// Single-owner login. Works in middleware (edge) and on the server, so it reads process.env directly.
+// Owner login (Google). Works in middleware (edge) and on the server, so it reads process.env directly.
 export const SESSION_COOKIE = 'rs_session';
 const MAX_AGE_DAYS = 30;
 
@@ -10,9 +10,9 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-export async function createSession(): Promise<{ token: string; maxAge: number }> {
+export async function createSession(email: string): Promise<{ token: string; maxAge: number }> {
   const maxAge = MAX_AGE_DAYS * 24 * 3600;
-  const token = await new SignJWT({ owner: true })
+  const token = await new SignJWT({ owner: true, email })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${MAX_AGE_DAYS}d`)

@@ -2,26 +2,28 @@ import 'server-only';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { neon } from '@neondatabase/serverless';
-import { drizzle as drizzleNeon } from 'drizzle-orm/neon-http';
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
+import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import { env } from '../env';
 import { BOOTSTRAP_SQL } from './schema';
 import * as schema from './schema';
 
-// Production: Neon over HTTP (DATABASE_URL). Local dev and tests: PGlite, an embedded Postgres in a folder.
-// Neon HTTP has no interactive transactions, so writes use conditional UPDATEs instead.
+// Production: Supabase Postgres (SUPABASE_DATABASE_URL, the transaction pooler on port 6543). Local dev and tests:
+// PGlite, an embedded Postgres in a folder. Writes that race use conditional UPDATEs, not transactions.
 
 type Db = ReturnType<typeof drizzlePglite<typeof schema>>;
 
 let ready: Promise<Db> | null = null;
 
 async function open(): Promise<Db> {
-  const url = env.DATABASE_URL;
+  const url = env.SUPABASE_DATABASE_URL;
   if (url.startsWith('postgres')) {
-    const sql = neon(url);
-    for (const stmt of BOOTSTRAP_SQL.split(';').map((s) => s.trim()).filter(Boolean)) await sql.query(stmt);
-    return drizzleNeon(sql, { schema }) as unknown as Db;
+    const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+    // The pooler runs in transaction mode, which has no prepared statements. Few connections per function.
+    const sql = postgres(url, { prepare: false, max: 3, idle_timeout: 20, ssl: local ? false : 'require' });
+    for (const stmt of BOOTSTRAP_SQL.split(';').map((s) => s.trim()).filter(Boolean)) await sql.unsafe(stmt);
+    return drizzlePostgres(sql, { schema }) as unknown as Db;
   }
   if (url !== 'memory://') await mkdir(path.dirname(path.resolve(url)), { recursive: true });
   const client = new PGlite(url === 'memory://' ? undefined : url);

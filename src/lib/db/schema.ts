@@ -9,6 +9,7 @@ export const settings = pgTable('settings', {
   channel: text('channel').notNull(),
   niche: text('niche').notNull(),
   links: jsonb('links').$type<Links>().notNull(),
+  helperSeenAt: bigint('helper_seen_at', { mode: 'number' }), // last call from the Claude helper on the laptop
 });
 
 export const accounts = pgTable('accounts', {
@@ -46,6 +47,9 @@ export const videos = pgTable('videos', {
   seoNote: text('seo_note'),
   seoStartedAt: bigint('seo_started_at', { mode: 'number' }),
   seoAt: bigint('seo_at', { mode: 'number' }),
+  // Waiting for the Claude helper to write the SEO (it replaces the basic draft), and when it took the job.
+  claudeWantedAt: bigint('claude_wanted_at', { mode: 'number' }),
+  claudeClaimedAt: bigint('claude_claimed_at', { mode: 'number' }),
   slotAt: bigint('slot_at', { mode: 'number' }),
   fileDeletedAt: bigint('file_deleted_at', { mode: 'number' }),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
@@ -89,6 +93,9 @@ CREATE TABLE IF NOT EXISTS videos (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS videos_slot_at ON videos (slot_at);
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS custom_thumb_key text;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS claude_wanted_at bigint;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS claude_claimed_at bigint;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS helper_seen_at bigint;
 CREATE TABLE IF NOT EXISTS posts (
   id text PRIMARY KEY, video_id text NOT NULL REFERENCES videos(id) ON DELETE CASCADE, platform text NOT NULL,
   state text NOT NULL, run_at bigint NOT NULL, locked_until bigint, attempts integer NOT NULL DEFAULT 0,

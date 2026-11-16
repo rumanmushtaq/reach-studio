@@ -1,5 +1,5 @@
 import 'server-only';
-import { seoErrorMessage, SeoUnavailable, writeSeoWithClaude } from './claude';
+import { seoPrompt } from './claude';
 import { decrypt, encrypt } from './crypto';
 import type { PostRow, VideoRow } from './db/schema';
 import { MAX_ATTEMPTS, retryAt, shouldDeleteFile } from './plan';
@@ -8,32 +8,64 @@ import { createTikTokPublisher } from './publishers/tiktok';
 import { AuthError, PublishError, type Publisher, type StepResult } from './publishers/types';
 import { createYouTubePublisher } from './publishers/youtube';
 import * as repo from './repo';
-import { draftSeo, PLATFORM_NAMES, type Platform } from './seo';
-import { deleteKey, downloadUrl, openStream, readBytes } from './storage';
+import { draftSeo, normaliseSeo, PLATFORM_NAMES, type Platform } from './seo';
+import { deleteKey, downloadUrl, openStream } from './storage';
 
 // ---------- SEO ----------
 
-/** Writes the SEO (Claude, or a basic draft) and books the next free slot if the video has none. */
+/**
+ * Writes a basic SEO draft right away and books the next free slot if the video has none, so the video
+ * never waits. Then it asks the Claude helper on the laptop to replace the draft (see helperJobs).
+ */
 export async function runSeo(videoId: string): Promise<void> {
   if (!(await repo.claimSeo(videoId, Date.now()))) return;
   const video = await repo.getVideo(videoId);
   if (!video) return;
-  const settings = await repo.getSettings();
   const brief = { name: video.name, note: video.note, shape: video.shape };
-  try {
-    const frames = await Promise.all(video.frameKeys.map((k) => readBytes(k).catch(() => null)));
-    const seo = await writeSeoWithClaude({
-      ...brief, durationSec: video.duration, channel: settings.channel, niche: settings.niche,
-      frames: frames.filter((f): f is Buffer => !!f),
-    });
-    await repo.saveSeo(videoId, seo, 'claude', null);
-  } catch (err) {
-    if (!(err instanceof SeoUnavailable)) console.error('SEO failed for', videoId, err);
-    // Keep any SEO the owner already has (a rewrite that failed); otherwise post with the basic draft.
-    await repo.saveSeo(videoId, video.seo ?? draftSeo(brief), video.seo ? (video.seoSource ?? 'draft') : 'draft', seoErrorMessage(err));
-  }
+  await repo.saveSeo(videoId, video.seo ?? draftSeo(brief), video.seo ? (video.seoSource ?? 'draft') : 'draft', null);
+  await repo.updateVideo(videoId, { claudeWantedAt: Date.now(), claudeClaimedAt: null });
   const fresh = await repo.getVideo(videoId);
   if (fresh && !fresh.slotAt) await repo.bookSlot(videoId);
+}
+
+/** True once any platform has the video: from then on the SEO there no longer changes. */
+async function postingStarted(videoId: string): Promise<boolean> {
+  return (await repo.listPosts([videoId])).some((p) => p.state !== 'waiting' || p.externalId);
+}
+
+const TOO_LATE = 'Posting started before Claude wrote it, so the basic draft was used.';
+
+/** Jobs for the Claude helper: the request text and links to the frames. */
+export async function helperJobs(now: number): Promise<{ id: string; name: string; prompt: string; frames: string[] }[]> {
+  await repo.helperSeen(now);
+  const settings = await repo.getSettings();
+  // Drop rewrites that came too late first, so they never take the helper's turn.
+  for (const v of await repo.listVideos()) {
+    if (v.claudeWantedAt && await postingStarted(v.id)) await repo.finishClaudeJob(v.id, { seoNote: TOO_LATE });
+  }
+  const jobs = [];
+  for (const v of await repo.claimClaudeJobs(now, 2)) {
+    const frames = await Promise.all(v.frameKeys.map((k) => downloadUrl(k, 3600)));
+    jobs.push({
+      id: v.id, name: v.name, frames,
+      prompt: seoPrompt({ name: v.name, note: v.note, shape: v.shape, durationSec: v.duration, channel: settings.channel, niche: settings.niche, frames: frames.length }),
+    });
+  }
+  return jobs;
+}
+
+/** The helper's answer: Claude's SEO, or why it could not write it. */
+export async function helperResult(videoId: string, answer: { seo?: unknown; error?: string }): Promise<'saved' | 'skipped'> {
+  const video = await repo.getVideo(videoId);
+  if (!video || !video.claudeClaimedAt) return 'skipped';
+  if (await postingStarted(videoId)) { await repo.finishClaudeJob(videoId, { seoNote: TOO_LATE }); return 'skipped'; }
+  if (answer.seo === undefined) {
+    await repo.finishClaudeJob(videoId, { seoNote: `Claude could not write it (${(answer.error ?? 'no answer').slice(0, 200)}). The basic draft is used; press Write with Claude to try again.` });
+    return 'skipped';
+  }
+  const seo = normaliseSeo(answer.seo, { name: video.name, note: video.note, shape: video.shape });
+  await repo.finishClaudeJob(videoId, { seo, seoSource: 'claude', seoNote: null, seoAt: Date.now() });
+  return 'saved';
 }
 
 // ---------- posting ----------

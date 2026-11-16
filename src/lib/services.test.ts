@@ -27,10 +27,9 @@ const setNow = (ms: number) => vi.setSystemTime(ms);
 
 beforeAll(async () => {
   process.chdir(await mkdtemp(path.join(os.tmpdir(), 'reach-test-')));
-  process.env.DATABASE_URL = 'memory://';
+  process.env.SUPABASE_DATABASE_URL = 'memory://';
   process.env.STUDIO_SECRET = 'test-secret';
-  delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.R2_BUCKET;
+  delete process.env.CLOUDINARY_URL;
   vi.useFakeTimers({ toFake: ['Date'] });
   setNow(START);
   [svc, repo, plan, types, storage, slots] = await Promise.all([
@@ -62,7 +61,7 @@ describe('job runner', { timeout: 120_000 }, () => {
       id: 'v1', name: 'Leo and the Magic Lamp', note: 'Leo finds a lamp', fileName: 'leo.mp4', fileKey, fileSize: 5, mime: 'video/mp4',
       duration: 45, width: 1080, height: 1920, shape: 'vertical', thumbKey: null, customThumbKey: null, frameKeys: [],
       platforms: { youtube: true, facebook: true, instagram: true, tiktok: true }, uploadState: 'ready',
-      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null,
+      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null,
       slotAt: null, fileDeletedAt: null, createdAt: START,
     });
 
@@ -84,7 +83,7 @@ describe('job runner', { timeout: 120_000 }, () => {
       return { state: 'live', url: 'https://tiktok.com/@leo/1' };
     };
 
-    // Tick 1: SEO is written (basic draft, no Claude key) and the first free slot is booked: today 7 PM.
+    // Tick 1: the basic SEO draft is written, Claude is asked for a rewrite, and the first free slot is booked: today 7 PM.
     // The early-upload time (1:00 PM) is already past at 2:00 PM, so YouTube and Facebook run in the same tick.
     // Facebook fails once and waits for its retry.
     expect((await svc.tick())).toMatchObject({ seo: 1, posts: 2 });
@@ -92,7 +91,8 @@ describe('job runner', { timeout: 120_000 }, () => {
     const slot = slots.at(slots.dayStart(START), '19:00');
     expect(v.seoState).toBe('ready');
     expect(v.seoSource).toBe('draft');
-    expect(v.seoNote).toContain('ANTHROPIC_API_KEY');
+    expect(v.seoNote).toBeNull();
+    expect(v.claudeWantedAt).toBe(START);
     expect(v.seo?.youtube.title).toContain('Leo and the Magic Lamp');
     expect(v.slotAt).toBe(slot);
     expect(await postState('v1')).toEqual({ youtube: 'scheduled', facebook: 'waiting', instagram: 'waiting', tiktok: 'waiting' });
@@ -214,5 +214,43 @@ describe('job runner', { timeout: 120_000 }, () => {
     await svc.tick();
     expect(calls).toContain('youtube:waiting');
     expect(await yt()).toMatchObject({ state: 'scheduled', runAt: picked });
+  });
+
+  it('lets the Claude helper replace the draft until posting starts', async () => {
+    setNow(START);
+    const base = (await repo.getVideo('v1'))!;
+    await repo.insertVideo({
+      ...base, id: 'v5', name: 'Bunty Bakes a Cake', slotAt: null, seo: null, seoSource: null, seoNote: null, seoState: 'pending',
+      seoStartedAt: null, seoAt: null, fileDeletedAt: null, frameKeys: ['videos/v5/frame-1.jpg'], fileKey: 'videos/v5/video.mp4',
+    });
+    await svc.runSeo('v5');
+    expect((await repo.getVideo('v5'))!).toMatchObject({ seoSource: 'draft', claudeWantedAt: START });
+
+    // The helper takes the job: a prompt naming the frame file, and a link to fetch it.
+    const jobs = await svc.helperJobs(START);
+    const job = jobs.find((j) => j.id === 'v5')!;
+    expect(job.prompt).toContain('frame-1.jpg');
+    expect(job.prompt).toContain('Bunty Bakes a Cake');
+    expect(job.frames).toHaveLength(1);
+    expect((await repo.getSettings()).helperSeenAt).toBe(START);
+    // A taken job is not handed out twice while the helper works on it.
+    expect((await svc.helperJobs(START + slots.MINUTE)).map((j) => j.id)).not.toContain('v5');
+
+    // Claude's answer replaces the draft; missing fields fall back to the draft.
+    const seo = { youtube: { title: 'Bunty ka Cake | Bunty Bakes a Cake', tags: ['bunty'] } };
+    expect(await svc.helperResult('v5', { seo })).toBe('saved');
+    const v = (await repo.getVideo('v5'))!;
+    expect(v).toMatchObject({ seoSource: 'claude', claudeWantedAt: null, claudeClaimedAt: null, seoNote: null });
+    expect(v.seo?.youtube.title).toBe('Bunty ka Cake | Bunty Bakes a Cake');
+    expect(v.seo?.tiktok.caption.length).toBeGreaterThan(0);
+
+    // A rewrite asked for after posting started is dropped with a note, never sent to the helper.
+    await repo.updateVideo('v5', { claudeWantedAt: START + 2 * slots.MINUTE });
+    await repo.resetPosts('v5');
+    const yt = (await repo.listPosts(['v5'])).find((p) => p.platform === 'youtube')!;
+    await repo.updatePost(yt.id, { state: 'scheduled', externalId: 'yt5' });
+    expect((await svc.helperJobs(START + 3 * slots.MINUTE)).map((j) => j.id)).not.toContain('v5');
+    expect((await repo.getVideo('v5'))!).toMatchObject({ claudeWantedAt: null, seoSource: 'claude' });
+    expect((await repo.getVideo('v5'))!.seoNote).toContain('Posting started');
   });
 });

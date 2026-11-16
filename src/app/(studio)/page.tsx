@@ -29,7 +29,7 @@ export default async function TodayPage() {
   const booked7 = upcoming.filter((v) => v.slotAt! < d.now + 7 * DAY).length;
   const posted7 = d.videos.filter((v) => v.slotAt && v.slotAt <= d.now && v.slotAt > d.now - 7 * DAY && fullyLive(v.id)).length;
   const items = attentionItems(d.videos, d.posts, d.connected, d.now);
-  const writing = d.videos.filter((v) => v.uploadState === 'ready' && v.seoState !== 'ready');
+  const writing = d.videos.filter((v) => v.uploadState === 'ready' && (v.seoState !== 'ready' || !!v.claudeWantedAt));
 
   return (
     <>
@@ -45,7 +45,7 @@ export default async function TodayPage() {
       </header>
 
       <AttentionBox items={items} />
-      {!d.setup.claude && <div className="banner info">Claude is not set up yet (ANTHROPIC_API_KEY), so new videos get a basic SEO draft.</div>}
+      {!d.setup.claude && writing.length > 0 && <div className="banner info">{writing.length} video{writing.length > 1 ? 's are' : ' is'} waiting for Claude. Run <code>npm run claude-helper</code> on your laptop; until then they use a basic SEO draft.</div>}
 
       <div className="cols">
         <section className="main" aria-labelledby="coming">
@@ -85,7 +85,7 @@ export default async function TodayPage() {
                         {chips.map((c) => <span key={c.platform} className={`chip ${c.tone}`}><b>{c.short}</b>{c.text}</span>)}
                       </span>
                     </span>
-                    {v.seoState !== 'ready'
+                    {v.seoState !== 'ready' || v.claudeWantedAt
                       ? <span className="pill seo"><span className="spin" aria-hidden="true" />Claude is writing</span>
                       : live ? <span className="pill live">Live</span>
                       : <span className="small muted">{v.shape === 'vertical' ? 'Short' : 'Long'}{v.duration ? ` · ${duration(v.duration)}` : ''}</span>}

@@ -11,7 +11,7 @@ const { settings, videos, posts, accounts } = schema;
 
 const DEFAULT_SETTINGS: SettingsRow = {
   id: 1, times: ['19:00'], channel: '', niche: 'Kids cartoons in Urdu and English',
-  links: { youtube: '', instagram: '', facebook: '', tiktok: '' },
+  links: { youtube: '', instagram: '', facebook: '', tiktok: '' }, helperSeenAt: null,
 };
 
 export async function getSettings(): Promise<SettingsRow> {
@@ -159,6 +159,34 @@ export async function claimSeo(id: string, now: number): Promise<boolean> {
 
 export async function saveSeo(id: string, seo: Seo, source: 'claude' | 'draft', note: string | null): Promise<void> {
   await updateVideo(id, { seo, seoSource: source, seoNote: note, seoState: 'ready', seoAt: Date.now() });
+}
+
+// ---------- Claude helper (runs on the owner's laptop, signed in to Claude) ----------
+
+export async function helperSeen(now: number): Promise<void> {
+  await getSettings();
+  await (await db()).update(settings).set({ helperSeenAt: now }).where(eq(settings.id, 1));
+}
+
+/** Takes up to `limit` videos waiting for Claude. A job not answered in 15 minutes can be taken again. */
+export async function claimClaudeJobs(now: number, limit: number): Promise<VideoRow[]> {
+  const d = await db();
+  const waiting = await d.select().from(videos).where(and(
+    eq(videos.uploadState, 'ready'), eq(videos.seoState, 'ready'), sql`${videos.claudeWantedAt} IS NOT NULL`,
+    or(isNull(videos.claudeClaimedAt), lt(videos.claudeClaimedAt, now - 15 * 60_000)),
+  )).orderBy(asc(videos.claudeWantedAt)).limit(limit);
+  const taken: VideoRow[] = [];
+  for (const v of waiting) {
+    const res = await d.update(videos).set({ claudeClaimedAt: now })
+      .where(and(eq(videos.id, v.id), or(isNull(videos.claudeClaimedAt), lt(videos.claudeClaimedAt, now - 15 * 60_000))))
+      .returning({ id: videos.id });
+    if (res.length) taken.push({ ...v, claudeClaimedAt: now });
+  }
+  return taken;
+}
+
+export async function finishClaudeJob(id: string, patch: Partial<VideoRow>): Promise<void> {
+  await updateVideo(id, { ...patch, claudeWantedAt: null, claudeClaimedAt: null });
 }
 
 export async function setPlatforms(id: string, platforms: Record<Platform, boolean>): Promise<void> {

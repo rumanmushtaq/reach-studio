@@ -3,8 +3,6 @@ import { createReadStream } from 'node:fs';
 import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { UploadTarget } from './browser-video';
 import {
   CLOUDINARY_MAX_VIDEO, cloudinaryBytes, cloudinaryDelete, cloudinaryDeletePrefix, cloudinaryOpen, cloudinaryUploadTarget, cloudinaryUrl,
@@ -12,21 +10,11 @@ import {
 import { sign } from './crypto';
 import { env, has } from './env';
 
-// Video files live in Cloudinary (CLOUDINARY_URL) or Cloudflare R2. The browser uploads straight to
-// storage, platforms download from a public or presigned link. With neither set (local dev) files go to
-// ./data/files behind signed local links.
+// Video files live in Cloudinary (CLOUDINARY_URL). The browser uploads straight to Cloudinary and the
+// platforms download from its public link. Without it (local dev) files go to ./data/files behind
+// signed local links.
 
 export const LOCAL_ROOT = path.resolve('data/files');
-
-let client: S3Client | null = null;
-function r2(): S3Client {
-  client ??= new S3Client({
-    region: 'auto',
-    endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY },
-  });
-  return client;
-}
 
 export function localPath(key: string): string {
   const full = path.resolve(LOCAL_ROOT, key);
@@ -45,31 +33,27 @@ export function maxVideoBytes(): number | null {
   return has.cloudinary() ? CLOUDINARY_MAX_VIDEO : null;
 }
 
-/** Free storage on the current plan, for the Storage box. */
+/** Free storage on Cloudinary's free plan (25 credits), for the Storage box. */
 export function freeStorageBytes(): number {
-  return (has.cloudinary() ? 25 : 10) * 1024 ** 3;
+  return 25 * 1024 ** 3;
 }
 
-/** Where the browser sends the file: a presigned PUT, or a signed form POST for Cloudinary. */
-export async function uploadTarget(key: string, contentType: string): Promise<UploadTarget> {
+/** Where the browser sends the file: a signed form POST for Cloudinary, or a signed local PUT. */
+export async function uploadTarget(key: string): Promise<UploadTarget> {
   if (has.cloudinary()) return cloudinaryUploadTarget(key);
-  if (!has.r2()) return { url: localUrl(key, 'PUT', 6 * 3600) };
-  return { url: await getSignedUrl(r2(), new PutObjectCommand({ Bucket: env.R2_BUCKET, Key: key, ContentType: contentType }), { expiresIn: 6 * 3600 }) };
+  return { url: localUrl(key, 'PUT', 6 * 3600) };
 }
 
 /** Time-limited public link: used by Instagram, Facebook and Upload-Post to fetch the video, and for thumbnails. */
 export async function downloadUrl(key: string, expiresSec = 24 * 3600): Promise<string> {
   if (has.cloudinary()) return cloudinaryUrl(key);
-  if (!has.r2()) return localUrl(key, 'GET', expiresSec);
-  return getSignedUrl(r2(), new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }), { expiresIn: Math.min(expiresSec, 7 * 24 * 3600) });
+  return localUrl(key, 'GET', expiresSec);
 }
 
 export async function fileSize(key: string): Promise<number | null> {
   try {
     if (has.cloudinary()) return await cloudinaryBytes(key);
-    if (!has.r2()) return (await stat(localPath(key))).size;
-    const head = await r2().send(new HeadObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
-    return head.ContentLength ?? null;
+    return (await stat(localPath(key))).size;
   } catch {
     return null;
   }
@@ -77,9 +61,7 @@ export async function fileSize(key: string): Promise<number | null> {
 
 export async function openStream(key: string): Promise<Readable> {
   if (has.cloudinary()) return cloudinaryOpen(key);
-  if (!has.r2()) return createReadStream(localPath(key));
-  const res = await r2().send(new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
-  return res.Body as Readable;
+  return createReadStream(localPath(key));
 }
 
 export async function readBytes(key: string): Promise<Buffer> {
@@ -91,40 +73,16 @@ export async function readBytes(key: string): Promise<Buffer> {
 /** Deletes everything under a prefix, e.g. `videos/<id>/`. */
 export async function deletePrefix(prefix: string): Promise<void> {
   if (has.cloudinary()) return cloudinaryDeletePrefix(prefix);
-  if (!has.r2()) {
-    await rm(localPath(prefix.replace(/\/$/, '')), { recursive: true, force: true });
-    return;
-  }
-  const listed = await r2().send(new ListObjectsV2Command({ Bucket: env.R2_BUCKET, Prefix: prefix }));
-  const keys = (listed.Contents ?? []).map((o) => ({ Key: o.Key! }));
-  if (keys.length) await r2().send(new DeleteObjectsCommand({ Bucket: env.R2_BUCKET, Delete: { Objects: keys } }));
+  await rm(localPath(prefix.replace(/\/$/, '')), { recursive: true, force: true });
 }
 
 /** Deletes only the video file, keeping thumbnail and frames for the studio's history. */
 export async function deleteKey(key: string): Promise<void> {
   if (has.cloudinary()) return cloudinaryDelete(key);
-  if (!has.r2()) {
-    await rm(localPath(key), { force: true });
-    return;
-  }
-  await r2().send(new DeleteObjectsCommand({ Bucket: env.R2_BUCKET, Delete: { Objects: [{ Key: key }] } }));
+  await rm(localPath(key), { force: true });
 }
 
 export async function ensureLocalDir(key: string): Promise<void> {
   await mkdir(path.dirname(localPath(key)), { recursive: true });
 }
 
-/** Total bytes stored, for the Storage box. */
-export async function storageUsed(): Promise<number> {
-  if (has.r2()) {
-    let total = 0;
-    let token: string | undefined;
-    do {
-      const page = await r2().send(new ListObjectsV2Command({ Bucket: env.R2_BUCKET, ContinuationToken: token }));
-      for (const o of page.Contents ?? []) total += o.Size ?? 0;
-      token = page.IsTruncated ? page.NextContinuationToken : undefined;
-    } while (token);
-    return total;
-  }
-  return 0; // local dev: not tracked
-}

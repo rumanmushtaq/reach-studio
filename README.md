@@ -1,7 +1,10 @@
 # Reach Studio
 
 Add a finished cartoon. The studio writes the SEO with Claude, books the next free daily slot, and posts
-the video to YouTube, Facebook, Instagram and TikTok at that time. Your laptop can be off.
+the video to YouTube, Facebook, Instagram and TikTok at that time. Posting works with your laptop off;
+Claude writes the SEO through your own Claude account while the helper runs on your laptop.
+
+You sign in with Google. There is no password to set.
 
 ## How it works
 
@@ -21,8 +24,11 @@ the video to YouTube, Facebook, Instagram and TikTok at that time. Your laptop c
 Behind the screens:
 
 1. The browser reads each video, takes 4 frames and a thumbnail, and uploads straight to storage.
-2. Claude looks at the frames, searches the web for current kids' cartoon search words, and writes Urdu +
-   English text for each platform (about a minute). Without a Claude key the studio writes a basic draft.
+2. The studio writes a basic SEO draft at once, so the video never waits. Then the **Claude helper** on
+   your laptop (`npm run claude-helper`) picks the video up: Claude Code, signed in with your Claude
+   account, looks at the frames, searches the web for current kids' cartoon search words, and writes Urdu +
+   English text for each platform (a minute or two). It replaces the draft if posting has not started.
+   Your own edits to the text cancel a waiting rewrite.
 3. The video takes the next free daily slot (Pakistan time), or keeps the time you picked.
 4. 6 hours before the slot, YouTube and Facebook get the video, scheduled to go public at the slot.
    1 hour before, Instagram gets the Reel to process. At the slot, Instagram publishes and TikTok posts
@@ -40,8 +46,9 @@ Needs Node 20 or newer.
 cp .env.example .env.local
 ```
 
-Fill in `STUDIO_PASSWORD`, `STUDIO_SECRET`, `CRON_SECRET` and `APP_URL=http://localhost:3100`.
-Leave the database and storage lines empty: locally the studio uses `./data`.
+Fill in `STUDIO_SECRET`, `CRON_SECRET` and `APP_URL=http://localhost:3100`.
+Leave the database and storage lines empty: locally the studio uses `./data`. Without the Google keys,
+the sign-in page shows **Enter studio (local only)**; the deployed studio always asks for Google.
 
 ```bash
 npm install
@@ -70,12 +77,17 @@ npx playwright test
 
 Vercel's Hobby plan is for personal, non-commercial use. When the channel earns money, move to Pro.
 
-### 1. Database: Neon
+### 1. Database: Supabase
 
-1. In Vercel: your project → **Storage** → **Create** → **Neon** (free). Or sign up at neon.tech.
-2. Copy the connection string (`postgres://…`) into `DATABASE_URL`.
+1. Sign up at supabase.com (free plan, no card) → **New project**. Pick a region near you, e.g. Mumbai
+   or Singapore, and save the database password it asks for.
+2. Open the project → **Connect** (top bar) → **Connection string** → **Transaction pooler**
+   (port `6543`). Copy it, put your database password in place of `[YOUR-PASSWORD]`, and set it as
+   `SUPABASE_DATABASE_URL`.
 
-The tables are created on first use.
+Use the transaction pooler, not the direct connection: Vercel opens many short connections and the
+pooler handles them. The tables are created on first use. Free Supabase projects pause after a week
+with no activity; the job runner calling the studio every 15 minutes keeps it awake.
 
 ### 2. Video storage: Cloudinary
 
@@ -87,30 +99,33 @@ The free plan takes **videos up to 100 MB** and gives 25 credits a month (1 cred
 1 GB downloaded). Export long cartoons at 720p, or a lower bitrate, to stay under 100 MB. Files are
 stored under random names and deleted the day after they are live everywhere.
 
-**Or Cloudflare R2** (no 100 MB limit, 10 GB free, but Cloudflare asks for a card or PayPal):
 
-1. Cloudflare dashboard → **R2** → **Create bucket**, e.g. `reach-studio`.
-2. **R2 → Manage API tokens → Create token** with *Object Read & Write* on that bucket.
-   Put the values in `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET`,
-   and leave `CLOUDINARY_URL` empty.
-3. Bucket → **Settings → CORS policy**, so the browser can upload directly:
+### 3. Claude (your Claude account, no API key)
 
-```json
-[{ "AllowedOrigins": ["https://YOUR-APP.vercel.app"], "AllowedMethods": ["PUT", "GET"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 3600 }]
+Claude writes the SEO through **Claude Code** on your laptop, signed in with your Claude account
+(Pro or Max), so its use counts toward your plan and there is no API key or bill.
+
+1. Install Claude Code and run `claude` once to sign in with your Claude account.
+2. In this folder's `.env.local`, set `HELPER_STUDIO_URL` to your deployed studio address and
+   `HELPER_SECRET` to its `CRON_SECRET`.
+3. Start the helper and leave the window open:
+
+```bash
+npm run claude-helper
 ```
 
-### 3. Claude
+It checks for new videos every minute. The **Accounts** page shows whether it is running. While it is
+off, videos still post on time with the basic SEO draft.
 
-Create an API key at console.anthropic.com and set `ANTHROPIC_API_KEY`. The studio uses Claude Opus 5.5
-with web search. The cost is a few cents per video.
-
-### 4. YouTube
+### 4. Google: sign-in and YouTube
 
 1. console.cloud.google.com → new project → enable **YouTube Data API v3**.
 2. **OAuth consent screen**: External. Add your Google account as a test user.
-3. **Credentials → Create OAuth client ID** → *Web application*. Add this redirect URI:
-   `https://YOUR-APP.vercel.app/api/oauth/google/callback`.
-4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+3. **Credentials → Create OAuth client ID** → *Web application*. Add both redirect URIs:
+   - `https://YOUR-APP.vercel.app/api/auth/google/callback` (signing in to the studio)
+   - `https://YOUR-APP.vercel.app/api/oauth/google/callback` (connecting YouTube)
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and put your Gmail address in `OWNER_EMAILS`.
+   Only the accounts listed there can sign in.
 5. Apply for the **YouTube API audit** (Google's "YouTube API Services – Audit and Quota Extension"
    form). Until Google approves it, YouTube keeps API uploads private.
 
@@ -148,6 +163,8 @@ can call it too: set the repository secrets `STUDIO_URL` and `CRON_SECRET`.
 - Posting times are on the quarter hour (7:00, 7:15 …) because the job runner runs every 15 minutes.
 - YouTube and Facebook go live at the exact minute. Instagram and TikTok go live within a few minutes
   of the slot.
-- Cloudinary's free plan: videos up to 100 MB each, 25 credits a month. R2's free tier: 10 GB, any size.
-  With next-day cleanup, a week of cartoons booked ahead fits easily.
+- Cloudinary's free plan: videos up to 100 MB each, 25 credits a month. With next-day cleanup, a week of
+  cartoons booked ahead fits easily.
+- Claude rewrites the SEO only while the helper runs on your laptop. A video that starts posting first
+  keeps the basic draft.
 - If you remove a video after it was uploaded early, delete it on YouTube or Facebook too.

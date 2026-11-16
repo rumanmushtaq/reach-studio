@@ -31,7 +31,7 @@ export function VideoDetail(props: Props) {
   const [tab, setTab] = useState<Platform>(PLATFORMS.find((p) => video.platforms[p]) ?? 'youtube');
   const status = videoStatus(video, posts, now);
   const anyLive = posts.some((p) => p.state === 'live');
-  const writing = video.seoState !== 'ready';
+  const writing = video.seoState !== 'ready' || !!video.claudeWantedAt;
 
   const run = (fn: () => Promise<Result>, after?: () => void) =>
     start(async () => {
@@ -65,12 +65,13 @@ export function VideoDetail(props: Props) {
         </div>
         <Pill status={status} />
         <button className="btn" disabled={writing || pending || anyLive} onClick={() => run(() => rewriteSeo(video.id))}>
-          {writing ? <><span className="spin" aria-hidden="true" />Claude is writing…</> : <><Icon name="spark" size={16} />Rewrite with Claude</>}
+          {writing ? <><span className="spin" aria-hidden="true" />Waiting for Claude…</> : <><Icon name="spark" size={16} />Rewrite with Claude</>}
         </button>
       </header>
 
       {video.uploadState === 'uploading' && <div className="banner warn">This upload did not finish. Remove the video and add it again.</div>}
       {video.seoNote && <div className="banner warn">{video.seoNote}</div>}
+      {video.claudeWantedAt && <div className="banner info">Claude writes this SEO through the helper on your laptop (<code>npm run claude-helper</code>). Until then the basic draft below is used, and your own edits cancel the rewrite.</div>}
 
       <div className="cols side-first">
         <div className="main" style={{ gap: 20 }}>

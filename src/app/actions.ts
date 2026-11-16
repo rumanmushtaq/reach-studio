@@ -1,15 +1,14 @@
 'use server';
 
-import { after } from 'next/server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { timingSafeEqual } from 'node:crypto';
 import { encrypt } from '@/lib/crypto';
 import { env } from '@/lib/env';
+import { localSignInAllowed } from '@/lib/google-login';
 import * as repo from '@/lib/repo';
 import { normaliseSeo, PLATFORMS, type Links, type Platform } from '@/lib/seo';
-import { retryPost, runSeo } from '@/lib/services';
+import { retryPost } from '@/lib/services';
 import { createSession, SESSION_COOKIE } from '@/lib/session';
 import { canBook, isValidTime } from '@/lib/slots';
 import { deletePrefix, deleteKey, fileSize, uploadTarget } from '@/lib/storage';
@@ -25,12 +24,10 @@ function refresh() {
 
 // ---------- login ----------
 
-export async function login(_prev: unknown, form: FormData): Promise<{ error?: string }> {
-  const given = Buffer.from(String(form.get('password') ?? ''));
-  const want = Buffer.from(env.STUDIO_PASSWORD);
-  if (!env.STUDIO_PASSWORD || !env.STUDIO_SECRET) return { error: 'Set STUDIO_PASSWORD and STUDIO_SECRET first (see README).' };
-  if (given.length !== want.length || !timingSafeEqual(given, want)) return { error: 'Wrong password.' };
-  const { token, maxAge } = await createSession();
+/** Local development only (no Google client set up): signs in without Google. */
+export async function localSignIn(): Promise<void> {
+  if (!localSignInAllowed()) redirect('/login');
+  const { token, maxAge } = await createSession('local@dev');
   (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: env.APP_URL.startsWith('https'), maxAge, path: '/' });
   redirect('/');
 }
@@ -110,18 +107,22 @@ export async function saveVideoInfo(videoId: string, info: { name: string; note:
 export async function saveSeo(videoId: string, seo: unknown): Promise<Result> {
   const video = await repo.getVideo(videoId);
   if (!video) return fail('This video was removed.');
-  await repo.updateVideo(videoId, { seo: normaliseSeo(seo, video) });
+  // The owner's own text wins: a Claude rewrite still waiting for the helper is dropped.
+  await repo.updateVideo(videoId, { seo: normaliseSeo(seo, video), claudeWantedAt: null, claudeClaimedAt: null });
   return ok();
 }
 
 export async function rewriteSeo(videoId: string): Promise<Result> {
   const video = await repo.getVideo(videoId);
   if (!video) return fail('This video was removed.');
-  if (video.seoState === 'working') return fail('Claude is already writing this one.');
-  await repo.updateVideo(videoId, { seoState: 'pending' });
-  after(() => runSeo(videoId));
+  if (video.seoState !== 'ready') return fail('The basic draft is still being written. Try again in a moment.');
+  if (video.claudeWantedAt) return fail('Already waiting for Claude.');
+  await repo.updateVideo(videoId, { claudeWantedAt: Date.now(), claudeClaimedAt: null });
+  const { helperSeenAt } = await repo.getSettings();
   refresh();
-  return ok('Claude is writing…');
+  return ok(helperSeenAt && Date.now() - helperSeenAt < 5 * 60_000
+    ? 'Sent to Claude on your laptop. About 2 minutes.'
+    : 'Queued. Claude writes it when the helper runs on your laptop (npm run claude-helper).');
 }
 
 export async function deleteVideo(videoId: string): Promise<Result> {
@@ -139,7 +140,7 @@ export async function thumbnailUploadUrl(videoId: string, mime: string): Promise
   if (!(await repo.getVideo(videoId))) return { ok: false, error: 'This video was removed.' };
   if (mime !== 'image/jpeg' && mime !== 'image/png') return { ok: false, error: 'Use a JPG or PNG image.' };
   const key = `videos/${videoId}/custom-thumb-${Date.now()}.${mime === 'image/png' ? 'png' : 'jpg'}`;
-  return { ok: true, target: await uploadTarget(key, mime), key };
+  return { ok: true, target: await uploadTarget(key), key };
 }
 
 export async function setCustomThumb(videoId: string, key: string): Promise<Result> {

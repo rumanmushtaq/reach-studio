@@ -6,8 +6,7 @@ const fixture = (name: string) => path.join(import.meta.dirname, 'fixtures', nam
 async function signIn(page: Page) {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
-  await page.fill('#password', process.env.STUDIO_PASSWORD ?? 'test-pass-1234');
-  await page.click('button:has-text("Sign in")');
+  await page.getByRole('button', { name: 'Enter studio (local only)' }).click();
   await expect(page.getByRole('link', { name: 'Today' }).first()).toBeVisible();
 }
 
