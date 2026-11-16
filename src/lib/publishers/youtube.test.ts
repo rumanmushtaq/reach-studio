@@ -10,6 +10,7 @@ const yt = {
   videos: { insert: vi.fn(), update: vi.fn() },
   playlists: { list: vi.fn(), insert: vi.fn() },
   playlistItems: { insert: vi.fn() },
+  thumbnails: { set: vi.fn() },
 };
 vi.mock('@googleapis/youtube', () => ({
   youtube: () => yt,
@@ -32,6 +33,7 @@ function job(over: Partial<PostRow> = {}, video: Partial<PostJob['video']> = {})
     links: { youtube: '', instagram: 'https://instagram.com/leo', facebook: '', tiktok: '' },
     fileUrl: async () => 'https://files.example/v1.mp4',
     openFile: async () => Readable.from(['video-bytes']),
+    openThumb: null,
   };
 }
 const ctx = { externalId: 'chan1', tokens: { refresh_token: 'r' }, saveTokens: async () => undefined };
@@ -42,6 +44,7 @@ beforeEach(() => {
   yt.videos.update.mockResolvedValue({ data: {} });
   yt.playlists.list.mockResolvedValue({ data: { items: [{ id: 'pl1', snippet: { title: 'Urdu Cartoon Stories' } }] } });
   yt.playlistItems.insert.mockResolvedValue({ data: {} });
+  yt.thumbnails.set.mockResolvedValue({ data: {} });
 });
 
 describe('YouTube', () => {
@@ -65,6 +68,16 @@ describe('YouTube', () => {
     await createYouTubePublisher().step(job(), ctx);
     expect(yt.playlists.insert).toHaveBeenCalledTimes(1);
     expect(yt.playlistItems.insert.mock.calls[1][0].requestBody.snippet.playlistId).toBe('plNew');
+  });
+
+  it('sets the owner thumbnail, and keeps going when YouTube refuses it (unverified channel)', async () => {
+    const withThumb = { ...job(), openThumb: async () => Readable.from(['jpg']) };
+    await createYouTubePublisher().step(withThumb, ctx);
+    expect(yt.thumbnails.set.mock.calls[0][0].videoId).toBe('yt123');
+    yt.thumbnails.set.mockRejectedValueOnce({ response: { status: 403 } });
+    expect((await createYouTubePublisher().step(withThumb, ctx)).state).toBe('scheduled');
+    await createYouTubePublisher().step(job(), ctx);
+    expect(yt.thumbnails.set).toHaveBeenCalledTimes(2);
   });
 
   it('still uploads when the playlist step fails', async () => {

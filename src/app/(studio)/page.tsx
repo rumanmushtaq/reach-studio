@@ -1,57 +1,144 @@
-import { AddVideo } from '@/components/AddVideo';
-import { VideoRow } from '@/components/VideoRow';
-import { DAY, formatSlot, freeSlots, timeLabel } from '@/lib/slots';
+import Link from 'next/link';
+import { AttentionBox } from '@/components/Attention';
+import { Countdown, Icon, PlatformBadge, Thumb } from '@/components/ui';
+import { attentionItems } from '@/lib/attention';
+import { platformChips, scheduleDays, weekFill } from '@/lib/schedule';
+import { PLATFORM_NAMES, PLATFORMS } from '@/lib/seo';
+import { DAY, formatTime, freeSlots, TIME_ZONE, timeLabel } from '@/lib/slots';
 import { studioData } from '@/lib/view';
 
-export default async function VideosPage() {
+const nowFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+
+function duration(sec: number | null) {
+  return sec ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : '';
+}
+
+export default async function TodayPage() {
   const d = await studioData();
-  const forVideo = (id: string) => d.posts.filter((p) => p.videoId === id);
-  const isPosted = (id: string, platforms: Record<string, boolean>) => {
-    const chosen = forVideo(id).filter((p) => platforms[p.platform]);
+  const postsOf = (id: string) => d.posts.filter((p) => p.videoId === id);
+  const fullyLive = (id: string) => {
+    const v = d.videos.find((x) => x.id === id)!;
+    const chosen = postsOf(id).filter((p) => v.platforms[p.platform]);
     return chosen.length > 0 && chosen.every((p) => p.state === 'live');
   };
-  const upcoming = d.videos.filter((v) => !isPosted(v.id, v.platforms)).sort((a, b) => (a.slotAt ?? 0) - (b.slotAt ?? 0));
-  const posted = d.videos.filter((v) => isPosted(v.id, v.platforms)).sort((a, b) => (b.slotAt ?? 0) - (a.slotAt ?? 0));
+  const upcoming = d.videos.filter((v) => v.slotAt && v.slotAt > d.now).sort((a, b) => a.slotAt! - b.slotAt!);
+  const next = upcoming[0];
+  const days = scheduleDays(d.videos, d.settings.times, d.now);
   const taken = d.videos.map((v) => v.slotAt).filter((s): s is number => !!s);
-  const free = freeSlots({ times: d.settings.times, taken, now: d.now, count: 60 });
-  const weekFree = free.filter((ms) => ms < d.now + 7 * DAY).length;
-  const next = upcoming.find((v) => v.slotAt && v.slotAt > d.now);
-  const stored = d.videos.filter((v) => v.uploadState === 'ready' && !v.fileDeletedAt);
-  const storedBytes = stored.reduce((n, v) => n + v.fileSize, 0);
+  const free7 = freeSlots({ times: d.settings.times, taken, now: d.now, count: 100 }).filter((ms) => ms < d.now + 7 * DAY);
+  const booked7 = upcoming.filter((v) => v.slotAt! < d.now + 7 * DAY).length;
+  const posted7 = d.videos.filter((v) => v.slotAt && v.slotAt <= d.now && v.slotAt > d.now - 7 * DAY && fullyLive(v.id)).length;
+  const items = attentionItems(d.videos, d.posts, d.connected, d.now);
+  const writing = d.videos.filter((v) => v.uploadState === 'ready' && v.seoState !== 'ready');
 
   return (
     <>
-      <div className="top">
-        <div><h1>Videos</h1><p className="sub">Add a cartoon. SEO and a posting slot are added for you.</p></div>
-      </div>
-      {!d.setup.claude && (
-        <div className="banner warn small">Claude is not set up yet (ANTHROPIC_API_KEY), so new videos get a basic SEO draft.</div>
-      )}
-      <div className="stats">
-        <div className="stat"><span className="k">Next post</span><span className="v">{next ? formatSlot(next.slotAt) : 'Nothing booked'}</span><span className="small muted">{next ? next.name : 'Add a video to book one'}</span></div>
-        <div className="stat"><span className="k">Next free slot</span><span className="v">{free[0] ? formatSlot(free[0]) : '–'}</span><span className="small muted">{free[1] ? `then ${formatSlot(free[1])}` : ''}</span></div>
-        <div className="stat"><span className="k">Free in next 7 days</span><span className="v">{weekFree} slot{weekFree === 1 ? '' : 's'}</span><span className="small muted">Daily at {d.settings.times.map(timeLabel).join(', ')}</span></div>
-      </div>
-      <AddVideo
-        nextFree={free[0] ?? null}
-        taken={d.videos.filter((v) => v.slotAt).map((v) => ({ slotAt: v.slotAt!, name: v.name }))}
-        now={d.now}
-      />
-      <div className="section-h"><h2>Coming up</h2><span className="small muted">{upcoming.length} video{upcoming.length === 1 ? '' : 's'}</span></div>
-      <div className="list">
-        {upcoming.length
-          ? upcoming.map((v) => <VideoRow key={v.id} v={v} posts={forVideo(v.id)} thumb={d.thumbs[v.id]} now={d.now} />)
-          : <div className="empty">No videos waiting. Add one above and it takes {free[0] ? formatSlot(free[0]) : 'the next free slot'}.</div>}
-      </div>
-      {posted.length > 0 && (
-        <>
-          <div className="section-h"><h2>Posted</h2><span className="small muted">{posted.length}</span></div>
-          <div className="list">{posted.map((v) => <VideoRow key={v.id} v={v} posts={forVideo(v.id)} thumb={d.thumbs[v.id]} now={d.now} />)}</div>
-        </>
-      )}
-      <div className="storage">
-        <span>Storage: {stored.length} video file{stored.length === 1 ? '' : 's'}, {(storedBytes / 1024 ** 3).toFixed(2)} GB</span>
-        <span>Files are deleted the day after they are live everywhere.</span>
+      <header className="head">
+        <div>
+          <span className="eyebrow">{nowFmt.format(new Date(d.now)).replace(',', '').toUpperCase()} PKT</span>
+          <h1>{next ? <>Next post goes live <Countdown to={next.slotAt!} now={d.now} /></> : d.videos.length ? 'Nothing booked yet' : 'Welcome to Reach Studio'}</h1>
+        </div>
+        <div className="actions">
+          <Link className="btn" href="/calendar">Open planner</Link>
+          <Link className="btn primary" href="/upload"><Icon name="plus" size={18} stroke={2.4} />Add videos</Link>
+        </div>
+      </header>
+
+      <AttentionBox items={items} />
+      {!d.setup.claude && <div className="banner info">Claude is not set up yet (ANTHROPIC_API_KEY), so new videos get a basic SEO draft.</div>}
+
+      <div className="cols">
+        <section className="main" aria-labelledby="coming">
+          <div className="panel-h">
+            <h2 id="coming" style={{ fontSize: 22, fontWeight: 800 }}>Coming up</h2>
+            <span className="small muted">Daily at {d.settings.times.map(timeLabel).join(' and ')} · <Link href="/settings">Change</Link></span>
+          </div>
+          {days.length === 0 && (
+            <div className="empty">
+              Nothing in the next 7 days. <Link href="/upload">Add a video</Link> and it takes the next free slot.
+            </div>
+          )}
+          {days.map((g) => (
+            <div key={g.day} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <h3 className="label day-h">{g.label}</h3>
+              {g.rows.map((r) => {
+                const [hm, ap] = formatTime(r.at).split(' ');
+                if (r.kind === 'free') {
+                  return (
+                    <Link key={r.at} href={`/upload?at=${r.at}`} className="slot free">
+                      <span className="time"><b>{hm}</b><span>{ap}</span></span>
+                      <span>Free slot</span>
+                      <span style={{ fontWeight: 700 }}>Add a video</span>
+                    </Link>
+                  );
+                }
+                const v = r.video;
+                const chips = platformChips(v, d.posts, d.connected, d.now);
+                const live = fullyLive(v.id);
+                return (
+                  <Link key={v.id} href={`/videos/${v.id}`} className="slot">
+                    <span className="time"><b>{hm}</b><span>{ap}{r.at > d.now && r.at - d.now < 6 * 3600_000 ? ' · soon' : ''}</span></span>
+                    <Thumb url={d.thumbs[v.id]} vertical={v.shape === 'vertical'} />
+                    <span style={{ minWidth: 0 }}>
+                      <span className="title" style={{ display: 'block' }}>{v.name}</span>
+                      <span className="chips" style={{ marginTop: 6 }}>
+                        {chips.map((c) => <span key={c.platform} className={`chip ${c.tone}`}><b>{c.short}</b>{c.text}</span>)}
+                      </span>
+                    </span>
+                    {v.seoState !== 'ready'
+                      ? <span className="pill seo"><span className="spin" aria-hidden="true" />Claude is writing</span>
+                      : live ? <span className="pill live">Live</span>
+                      : <span className="small muted">{v.shape === 'vertical' ? 'Short' : 'Long'}{v.duration ? ` · ${duration(v.duration)}` : ''}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+          {free7.length > 0 && days.length > 0 && <p className="small muted">See every free slot in the <Link href="/calendar">planner</Link>.</p>}
+        </section>
+
+        <aside className="side">
+          <section className="card" aria-labelledby="week">
+            <h2 id="week" className="label">Next 7 days</h2>
+            <div className="stat3">
+              <div><b>{posted7}</b><span className="small muted">posted last week</span></div>
+              <div><b>{booked7}</b><span className="small muted">booked</span></div>
+              <div><b style={{ color: 'var(--ok)' }}>{free7.length}</b><span className="small muted">free slots</span></div>
+            </div>
+            <div className="week7" role="img" aria-label="How full each of the next 7 days is">
+              {weekFill(d.videos, d.settings.times, d.now).map((w) => <span key={w.day} className={`cell ${w.fill === 'full' ? '' : w.fill}`} />)}
+            </div>
+            <div className="week7" aria-hidden="true">
+              {weekFill(d.videos, d.settings.times, d.now).map((w) => <span key={w.day} className="d">{w.label}</span>)}
+            </div>
+          </section>
+
+          <section className="card" aria-labelledby="acc" style={{ gap: 8 }}>
+            <h2 id="acc" className="label">Accounts</h2>
+            {PLATFORMS.map((p) => (
+              <div className="acct-row" key={p}>
+                <PlatformBadge p={p} small />
+                <span className="n">{d.connected[p] ?? PLATFORM_NAMES[p]}</span>
+                {d.connected[p] ? <span className="ok-t">Connected</span> : <Link className="small" style={{ fontWeight: 700 }} href="/accounts">Connect</Link>}
+              </div>
+            ))}
+          </section>
+
+          {writing.length > 0 && (
+            <section className="card" aria-labelledby="writing" style={{ gap: 8 }}>
+              <h2 id="writing" className="label">Claude is writing</h2>
+              {writing.map((v) => <Link key={v.id} href={`/videos/${v.id}`} className="small">{v.name}</Link>)}
+            </section>
+          )}
+
+          {free7.length > 0 && (
+            <section className="navy-card" aria-labelledby="streak">
+              <h2 id="streak" className="label">Keep the streak</h2>
+              <p>{free7.length} free slot{free7.length > 1 ? 's' : ''} in the next 7 days. Posting on a steady schedule keeps viewers coming back.</p>
+              <Link href="/upload">Fill this week</Link>
+            </section>
+          )}
+        </aside>
       </div>
     </>
   );

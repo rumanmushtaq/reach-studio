@@ -17,7 +17,7 @@ function job(over: Partial<PostRow> = {}, slotAt = SLOT): PostJob {
   const post = { id: 'p1', videoId: 'v1', platform: 'facebook', state: 'waiting', externalId: null, url: null, attempts: 0, ...over } as PostRow;
   return {
     video, post, now: NOW, links: { youtube: 'https://yt.example/leo', instagram: '', facebook: '', tiktok: '' },
-    fileUrl: async () => 'https://files.example/v1.mp4', openFile: async () => { throw new Error('not used'); },
+    fileUrl: async () => 'https://files.example/v1.mp4', openFile: async () => { throw new Error('not used'); }, openThumb: null,
   };
 }
 const ctx = (tokens: unknown) => ({ externalId: 'page1', tokens, saveTokens: async () => undefined });

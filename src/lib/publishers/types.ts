@@ -11,6 +11,8 @@ export type PostJob = {
   /** Public, time-limited link to the video file. */
   fileUrl(): Promise<string>;
   openFile(): Promise<Readable>;
+  /** The owner's own thumbnail, when uploaded. */
+  openThumb: (() => Promise<Readable>) | null;
 };
 
 export type AccountContext = {

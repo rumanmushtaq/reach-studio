@@ -69,6 +69,7 @@ export async function runPost(post: PostRow, now: number): Promise<void> {
         post, links: settings.links, now,
         fileUrl: () => downloadUrl(video.fileKey, 24 * 3600),
         openFile: () => openStream(video.fileKey),
+        openThumb: video.customThumbKey ? () => openStream(video.customThumbKey!) : null,
       },
       {
         externalId: account.externalId,

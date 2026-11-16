@@ -12,7 +12,7 @@ import { normaliseSeo, PLATFORMS, type Links, type Platform } from '@/lib/seo';
 import { retryPost, runSeo } from '@/lib/services';
 import { createSession, SESSION_COOKIE } from '@/lib/session';
 import { canBook, isValidTime } from '@/lib/slots';
-import { deletePrefix } from '@/lib/storage';
+import { deletePrefix, deleteKey, fileSize, uploadUrl } from '@/lib/storage';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const ok = (message?: string): Result => ({ ok: true, message });
@@ -130,6 +130,40 @@ export async function deleteVideo(videoId: string): Promise<Result> {
   refresh();
   const onPlatforms = posts.filter((p) => p.externalId && (p.state === 'scheduled' || p.state === 'live')).map((p) => p.platform);
   return ok(onPlatforms.length ? `Removed. It is already on ${onPlatforms.join(', ')}; delete it there too if you want it gone.` : 'Video removed');
+}
+
+// ---------- custom thumbnail ----------
+
+export async function thumbnailUploadUrl(videoId: string, mime: string): Promise<{ ok: true; url: string; key: string } | { ok: false; error: string }> {
+  if (!(await repo.getVideo(videoId))) return { ok: false, error: 'This video was removed.' };
+  if (mime !== 'image/jpeg' && mime !== 'image/png') return { ok: false, error: 'Use a JPG or PNG image.' };
+  const key = `videos/${videoId}/custom-thumb-${Date.now()}.${mime === 'image/png' ? 'png' : 'jpg'}`;
+  return { ok: true, url: await uploadUrl(key, mime), key };
+}
+
+export async function setCustomThumb(videoId: string, key: string): Promise<Result> {
+  const video = await repo.getVideo(videoId);
+  if (!video || !key.startsWith(`videos/${videoId}/custom-thumb-`)) return fail('This video was removed.');
+  const size = await fileSize(key);
+  if (!size) return fail('The image did not upload. Try again.');
+  if (size > 2 * 1024 * 1024) { await deleteKey(key); return fail('YouTube thumbnails must be under 2 MB.'); }
+  if (video.customThumbKey) await deleteKey(video.customThumbKey).catch(() => undefined);
+  await repo.updateVideo(videoId, { customThumbKey: key });
+  // Already uploaded early to YouTube: run its step now so the thumbnail is set there too.
+  const yt = (await repo.listPosts([videoId])).find((p) => p.platform === 'youtube' && p.state === 'scheduled');
+  if (yt) await repo.updatePost(yt.id, { runAt: Date.now() });
+  refresh();
+  return ok('Thumbnail added');
+}
+
+export async function removeCustomThumb(videoId: string): Promise<Result> {
+  const video = await repo.getVideo(videoId);
+  if (video?.customThumbKey) {
+    await deleteKey(video.customThumbKey).catch(() => undefined);
+    await repo.updateVideo(videoId, { customThumbKey: null });
+  }
+  refresh();
+  return ok('Thumbnail removed');
 }
 
 export async function retry(postId: string): Promise<Result> {

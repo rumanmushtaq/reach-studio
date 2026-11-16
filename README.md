@@ -5,22 +5,30 @@ the video to YouTube, Facebook, Instagram and TikTok at that time. Your laptop c
 
 ## How it works
 
-1. **Add video** (Videos page). The browser reads the video, takes 4 frames and a thumbnail, and uploads
-   everything straight to storage.
-2. **SEO** starts as soon as the upload finishes. Claude looks at the frames, searches the web for
-   current kids' cartoon search words, and writes Urdu + English text for each platform (about a minute).
-   Without a Claude key the studio writes a basic draft.
-3. **Slot**: right after the SEO is ready, the video takes the next free daily slot (Pakistan time).
-   Or choose **Pick date and time** when you add it: that time is reserved straight away, and its posts
-   wait until the SEO is written. Move a video later on its page (any date and time), the Calendar or
-   the Free slots page.
-4. **Posting**:
-   - 6 hours before the slot, YouTube and Facebook get the video, scheduled to go public at the slot.
-   - 1 hour before, Instagram gets the Reel to process.
-   - At the slot, Instagram publishes and TikTok posts through Upload-Post.
-   - A failed post retries 3 times, then shows **Retry** on the video.
-5. **Cleanup**: the day after a video is live on every chosen platform, its video file is deleted.
-   Its SEO, links and thumbnail stay.
+- **Today**: the home page. A countdown to the next post, a **Needs you** box with one fix button per problem
+  (failed post, account not connected, unfinished upload), and the next 7 days grouped by day, with free
+  slots shown inline. Each video shows where each platform stands.
+- **Add videos** (the orange button): drop one or more cartoons and choose when they go live:
+  next free slots, tonight, this weekend, or a date and time you pick. Each video shows its steps live:
+  read, uploaded, SEO by Claude, booked.
+- **Video page**: a preview of how the post looks on each platform, a **Reach checklist** of what to
+  improve, the text editor (tags and hashtags as chips), the posting time with one-tap moves, each
+  platform's status, and a custom YouTube thumbnail upload (YouTube allows these on verified channels).
+- **Planner**: the week as a grid. Drag a video to a free slot, or tap it and tap the slot. Every move
+  shows an Undo for 10 seconds.
+- **Library**: every video, with search and filters (coming up, live, needs you).
+
+Behind the screens:
+
+1. The browser reads each video, takes 4 frames and a thumbnail, and uploads straight to storage.
+2. Claude looks at the frames, searches the web for current kids' cartoon search words, and writes Urdu +
+   English text for each platform (about a minute). Without a Claude key the studio writes a basic draft.
+3. The video takes the next free daily slot (Pakistan time), or keeps the time you picked.
+4. 6 hours before the slot, YouTube and Facebook get the video, scheduled to go public at the slot.
+   1 hour before, Instagram gets the Reel to process. At the slot, Instagram publishes and TikTok posts
+   through Upload-Post. A failed post retries 3 times, then shows on Today.
+5. The day after a video is live on every chosen platform, its video file is deleted. Its SEO, links and
+   thumbnail stay.
 
 The job runner is `/api/cron/tick`. Something must call it every 15 minutes (step 7).
 

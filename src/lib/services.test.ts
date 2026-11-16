@@ -60,7 +60,7 @@ describe('job runner', { timeout: 120_000 }, () => {
     await writeFile(storage.localPath(fileKey), 'video');
     await repo.insertVideo({
       id: 'v1', name: 'Leo and the Magic Lamp', note: 'Leo finds a lamp', fileName: 'leo.mp4', fileKey, fileSize: 5, mime: 'video/mp4',
-      duration: 45, width: 1080, height: 1920, shape: 'vertical', thumbKey: null, frameKeys: [],
+      duration: 45, width: 1080, height: 1920, shape: 'vertical', thumbKey: null, customThumbKey: null, frameKeys: [],
       platforms: { youtube: true, facebook: true, instagram: true, tiktok: true }, uploadState: 'ready',
       seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null,
       slotAt: null, fileDeletedAt: null, createdAt: START,

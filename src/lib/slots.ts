@@ -82,6 +82,42 @@ export function pktTime(ms: number): string {
   return new Date(ms + PKT_OFFSET).toISOString().slice(11, 16);
 }
 
+/** Quick choice "Tonight": the first free evening time today (7, 8, 9 or 10 PM), or null. */
+export function tonightSlot(taken: Iterable<number>, now: number): number | null {
+  const day = dayStart(now);
+  const t = [...taken];
+  for (const hhmm of ['19:00', '20:00', '21:00', '22:00']) {
+    const ms = at(day, hhmm);
+    if (canBook(ms, t, now)) return ms;
+  }
+  return null;
+}
+
+/** Quick choice "This weekend": free daily slots on the coming Saturday and Sunday (today counts), earliest first. */
+export function weekendSlots(times: string[], taken: Iterable<number>, now: number): number[] {
+  const t = [...taken];
+  const out: number[] = [];
+  const today = dayStart(now);
+  const weekday = new Date(today + PKT_OFFSET).getUTCDay(); // 0 = Sunday
+  const toSat = weekday === 0 ? -1 : 6 - weekday; // on Sunday, the weekend is yesterday and today
+  for (const d of [toSat, toSat + 1]) {
+    if (d < 0) continue;
+    for (const hhmm of normaliseTimes(times)) {
+      const ms = at(today + d * DAY, hhmm);
+      if (canBook(ms, t, now)) out.push(ms);
+    }
+  }
+  return out;
+}
+
+/** "in 2 h 12 m", "in 45 m", "in 3 days". */
+export function countdown(to: number, now: number): string {
+  const mins = Math.max(0, Math.round((to - now) / MINUTE));
+  if (mins < 60) return `in ${mins} m`;
+  if (mins < 48 * 60) return `in ${Math.floor(mins / 60)} h ${mins % 60} m`;
+  return `in ${Math.round(mins / (24 * 60))} days`;
+}
+
 /** Every quarter hour of the day, "00:00" … "23:45". */
 export const QUARTER_HOURS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
 

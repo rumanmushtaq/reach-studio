@@ -3,7 +3,7 @@ import { auth, youtube, type youtube_v3 } from '@googleapis/youtube';
 import { env } from '../env';
 import { withLinksAndTags } from '../seo';
 import { MINUTE } from '../slots';
-import { AuthError, PublishError, type AccountContext, type Publisher } from './types';
+import { AuthError, PublishError, type AccountContext, type PostJob, type Publisher } from './types';
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/youtube.upload',
@@ -75,6 +75,12 @@ async function addToPlaylist(yt: youtube_v3.Youtube, videoId: string, title: str
   }
 }
 
+/** Best effort: YouTube allows custom thumbnails only on verified channels. */
+async function setThumbnail(yt: youtube_v3.Youtube, videoId: string, open: PostJob['openThumb']): Promise<void> {
+  if (!open) return;
+  await yt.thumbnails.set({ videoId, media: { mimeType: 'image/jpeg', body: await open() } }).catch(() => undefined);
+}
+
 export function createYouTubePublisher(): Publisher {
   return {
     async step(job, ctx) {
@@ -109,12 +115,14 @@ export function createYouTubePublisher(): Publisher {
           if (!id) throw new PublishError('YouTube did not return a video id', true);
           const url = isShort ? `https://youtube.com/shorts/${id}` : `https://youtu.be/${id}`;
           await addToPlaylist(yt, id, seo.playlist).catch(() => undefined);
+          await setThumbnail(yt, id, job.openThumb);
           return schedule ? { state: 'scheduled', runAt: video.slotAt, externalId: id, url } : { state: 'live', externalId: id, url };
         }
 
         // Uploaded early. Before the slot: keep YouTube's publish time in step with the studio (the slot may have moved).
         const id = post.externalId!;
         if (now < video.slotAt - MINUTE) {
+          await setThumbnail(yt, id, job.openThumb); // a thumbnail added after the early upload
           await yt.videos.update({
             part: ['status'],
             requestBody: { id, status: { privacyStatus: 'private', publishAt: new Date(video.slotAt).toISOString(), selfDeclaredMadeForKids: true } },

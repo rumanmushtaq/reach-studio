@@ -36,6 +36,7 @@ export const videos = pgTable('videos', {
   height: integer('height'),
   shape: text('shape').$type<'vertical' | 'horizontal'>().notNull(),
   thumbKey: text('thumb_key'),
+  customThumbKey: text('custom_thumb_key'), // owner's own YouTube thumbnail
   frameKeys: jsonb('frame_keys').$type<string[]>().notNull().default([]),
   platforms: jsonb('platforms').$type<Record<Platform, boolean>>().notNull(),
   uploadState: text('upload_state').$type<UploadState>().notNull(),
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS videos (
   slot_at bigint, file_deleted_at bigint, created_at bigint NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS videos_slot_at ON videos (slot_at);
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS custom_thumb_key text;
 CREATE TABLE IF NOT EXISTS posts (
   id text PRIMARY KEY, video_id text NOT NULL REFERENCES videos(id) ON DELETE CASCADE, platform text NOT NULL,
   state text NOT NULL, run_at bigint NOT NULL, locked_until bigint, attempts integer NOT NULL DEFAULT 0,
