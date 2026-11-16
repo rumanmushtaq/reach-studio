@@ -8,7 +8,7 @@ import { createTikTokPublisher } from './publishers/tiktok';
 import { AuthError, PublishError, type Publisher, type StepResult } from './publishers/types';
 import { createYouTubePublisher } from './publishers/youtube';
 import * as repo from './repo';
-import { draftSeo, normaliseSeo, PLATFORM_NAMES, type Platform } from './seo';
+import { draftSeo, normaliseSeo, PLATFORM_NAMES, ResearchSchema, type Platform } from './seo';
 import { deleteKey, downloadUrl, openStream } from './storage';
 
 // ---------- SEO ----------
@@ -64,7 +64,9 @@ export async function helperResult(videoId: string, answer: { seo?: unknown; err
     return 'skipped';
   }
   const seo = normaliseSeo(answer.seo, { name: video.name, note: video.note, shape: video.shape });
-  await repo.finishClaudeJob(videoId, { seo, seoSource: 'claude', seoNote: null, seoAt: Date.now() });
+  const raw = (answer.seo as { research?: unknown } | null)?.research;
+  const research = raw && typeof raw === 'object' ? ResearchSchema.parse(raw) : null;
+  await repo.finishClaudeJob(videoId, { seo, research, seoSource: 'claude', seoNote: null, seoAt: Date.now() });
   return 'saved';
 }
 

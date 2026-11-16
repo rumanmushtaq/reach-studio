@@ -1,16 +1,16 @@
 'use server';
 
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { encrypt } from '@/lib/crypto';
 import { env } from '@/lib/env';
-import { localSignInAllowed } from '@/lib/google-login';
+import {
+  channelSchema, fieldErrors, tiktokSchema, timeSchema, videoInfoSchema,
+  type ChannelForm, type FormResult, type TikTokForm, type TimeForm, type VideoInfoForm,
+} from '@/lib/forms';
 import * as repo from '@/lib/repo';
-import { normaliseSeo, PLATFORMS, type Links, type Platform } from '@/lib/seo';
+import { normaliseSeo, PLATFORMS, type Platform } from '@/lib/seo';
 import { retryPost } from '@/lib/services';
-import { createSession, SESSION_COOKIE } from '@/lib/session';
-import { canBook, isValidTime } from '@/lib/slots';
+import { canBook } from '@/lib/slots';
 import { deletePrefix, deleteKey, fileSize, uploadTarget } from '@/lib/storage';
 import type { UploadTarget } from '@/lib/browser-video';
 
@@ -22,27 +22,14 @@ function refresh() {
   revalidatePath('/', 'layout');
 }
 
-// ---------- login ----------
-
-/** Local development only (no Google client set up): signs in without Google. */
-export async function localSignIn(): Promise<void> {
-  if (!localSignInAllowed()) redirect('/login');
-  const { token, maxAge } = await createSession('local@dev');
-  (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: env.APP_URL.startsWith('https'), maxAge, path: '/' });
-  redirect('/');
-}
-
-export async function logout(): Promise<void> {
-  (await cookies()).delete(SESSION_COOKIE);
-  redirect('/login');
-}
-
 // ---------- settings ----------
 
-export async function addTime(hhmm: string): Promise<Result> {
-  if (!isValidTime(hhmm)) return fail('Pick a time on the quarter hour, such as 7:00 PM or 7:15 PM.');
+export async function addTime(input: TimeForm): Promise<FormResult> {
+  const parsed = timeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, fields: fieldErrors(parsed.error) };
+  const hhmm = parsed.data.time;
   const { times } = await repo.getSettings();
-  if (times.includes(hhmm)) return fail('That time is already a daily slot.');
+  if (times.includes(hhmm)) return { ok: false, fields: { time: 'That time is already a daily slot.' } };
   await repo.saveSettings({ times: [...times, hhmm] });
   refresh();
   return ok('Daily time added');
@@ -56,13 +43,10 @@ export async function removeTime(hhmm: string): Promise<Result> {
   return ok('Daily time removed');
 }
 
-export async function saveChannel(input: { channel: string; niche: string; links: Links }): Promise<Result> {
-  const clean = (s: string) => String(s ?? '').trim().slice(0, 300);
-  await repo.saveSettings({
-    channel: clean(input.channel),
-    niche: clean(input.niche),
-    links: Object.fromEntries(PLATFORMS.map((p) => [p, clean(input.links?.[p] ?? '')])) as Links,
-  });
+export async function saveChannel(input: ChannelForm): Promise<FormResult> {
+  const parsed = channelSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, fields: fieldErrors(parsed.error) };
+  await repo.saveSettings(parsed.data);
   refresh();
   return ok('Saved');
 }
@@ -96,12 +80,12 @@ export async function setPlatforms(videoId: string, platforms: Record<Platform, 
   return ok();
 }
 
-export async function saveVideoInfo(videoId: string, info: { name: string; note: string }): Promise<Result> {
-  const name = String(info.name ?? '').trim().slice(0, 200);
-  if (!name) return fail('Give the video a name.');
-  await repo.updateVideo(videoId, { name, note: String(info.note ?? '').trim().slice(0, 500) });
+export async function saveVideoInfo(videoId: string, input: VideoInfoForm): Promise<FormResult> {
+  const parsed = videoInfoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, fields: fieldErrors(parsed.error) };
+  await repo.updateVideo(videoId, parsed.data);
   refresh();
-  return ok();
+  return { ok: true };
 }
 
 export async function saveSeo(videoId: string, seo: unknown): Promise<Result> {
@@ -176,10 +160,10 @@ export async function retry(postId: string): Promise<Result> {
 
 // ---------- accounts ----------
 
-export async function connectTikTok(input: { apiKey: string; user: string }): Promise<Result> {
-  const apiKey = String(input.apiKey ?? '').trim();
-  const user = String(input.user ?? '').trim();
-  if (!apiKey || !user) return fail('Enter your Upload-Post API key and profile name.');
+export async function connectTikTok(input: TikTokForm): Promise<FormResult> {
+  const parsed = tiktokSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, fields: fieldErrors(parsed.error) };
+  const { apiKey, user } = parsed.data;
   await repo.saveAccount({ platform: 'tiktok', externalId: user, name: `${user} (Upload-Post)`, tokens: encrypt(JSON.stringify({ apiKey, user })), connectedAt: Date.now() });
   refresh();
   return ok('TikTok connected');

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { QueryProvider } from '@/components/query';
 import './globals.css';
 
 export const metadata: Metadata = { title: 'Reach Studio', description: 'Add a cartoon. SEO and posting slots are added for you.' };
@@ -16,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body><QueryProvider>{children}</QueryProvider></body>
     </html>
   );
 }

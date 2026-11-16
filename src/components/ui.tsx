@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { logout } from '@/app/actions';
+import { signOut } from '@/app/auth-actions';
 import type { Status } from '@/lib/plan';
 import { PLATFORM_SHORT, type Platform } from '@/lib/seo';
 import { countdown } from '@/lib/slots';
@@ -100,7 +100,7 @@ export function Rail({ info }: { info: NavInfo }) {
         <span className="label" style={{ color: 'var(--navy-faint)' }}>Storage</span>
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.max(2, info.storagePct)}%` }} /></div>
         <span>{info.storage}</span>
-        <form action={logout}><button className="signout">Sign out</button></form>
+        <form action={signOut}><button className="signout">Sign out</button></form>
       </div>
     </nav>
   );

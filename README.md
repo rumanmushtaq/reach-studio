@@ -2,9 +2,11 @@
 
 Add a finished cartoon. The studio writes the SEO with Claude, books the next free daily slot, and posts
 the video to YouTube, Facebook, Instagram and TikTok at that time. Posting works with your laptop off;
-Claude writes the SEO through your own Claude account while the helper runs on your laptop.
+Claude researches the market and writes the SEO through your own Claude account while the helper runs on
+your laptop.
 
-You sign in with Google. There is no password to set.
+You sign in with an email and password. The first time, the sign-in page asks you to create the account;
+no password goes in the settings files.
 
 ## How it works
 
@@ -26,8 +28,10 @@ Behind the screens:
 1. The browser reads each video, takes 4 frames and a thumbnail, and uploads straight to storage.
 2. The studio writes a basic SEO draft at once, so the video never waits. Then the **Claude helper** on
    your laptop (`npm run claude-helper`) picks the video up: Claude Code, signed in with your Claude
-   account, looks at the frames, searches the web for current kids' cartoon search words, and writes Urdu +
-   English text for each platform (a minute or two). It replaces the draft if posting has not started.
+   account, looks at the frames and researches the market on the web: what parents and kids search right
+   now, the titles and tags of the top channels in your niche, trending hashtags on Shorts, TikTok and
+   Reels, and festivals coming up. Then it writes Urdu + English text for each platform (a few minutes).
+   Its findings show on the video page under **Market research by Claude**. It replaces the draft if posting has not started.
    Your own edits to the text cancel a waiting rewrite.
 3. The video takes the next free daily slot (Pakistan time), or keeps the time you picked.
 4. 6 hours before the slot, YouTube and Facebook get the video, scheduled to go public at the slot.
@@ -47,8 +51,8 @@ cp .env.example .env.local
 ```
 
 Fill in `STUDIO_SECRET`, `CRON_SECRET` and `APP_URL=http://localhost:3100`.
-Leave the database and storage lines empty: locally the studio uses `./data`. Without the Google keys,
-the sign-in page shows **Enter studio (local only)**; the deployed studio always asks for Google.
+Leave the database and storage lines empty: locally the studio uses `./data`. Open the studio and create
+your account on the sign-in page (on your laptop it does not ask for the setup code).
 
 ```bash
 npm install
@@ -117,15 +121,13 @@ npm run claude-helper
 It checks for new videos every minute. The **Accounts** page shows whether it is running. While it is
 off, videos still post on time with the basic SEO draft.
 
-### 4. Google: sign-in and YouTube
+### 4. YouTube
 
 1. console.cloud.google.com → new project → enable **YouTube Data API v3**.
 2. **OAuth consent screen**: External. Add your Google account as a test user.
-3. **Credentials → Create OAuth client ID** → *Web application*. Add both redirect URIs:
-   - `https://YOUR-APP.vercel.app/api/auth/google/callback` (signing in to the studio)
-   - `https://YOUR-APP.vercel.app/api/oauth/google/callback` (connecting YouTube)
-4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and put your Gmail address in `OWNER_EMAILS`.
-   Only the accounts listed there can sign in.
+3. **Credentials → Create OAuth client ID** → *Web application*. Add this redirect URI:
+   `https://YOUR-APP.vercel.app/api/oauth/google/callback`.
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 5. Apply for the **YouTube API audit** (Google's "YouTube API Services – Audit and Quota Extension"
    form). Until Google approves it, YouTube keeps API uploads private.
 
@@ -150,8 +152,11 @@ Sign up at upload-post.com, connect your TikTok there, and create an API key. In
 
 1. Push this folder to GitHub and import it in Vercel.
 2. Add all the environment variables from `.env.example` (`APP_URL` = your Vercel address).
-3. Deploy, open the app, sign in, and connect the accounts on the **Accounts** page.
-4. Call the job runner every 15 minutes. Free option: **cron-job.org** → new cron job →
+3. Deploy and open the app. The sign-in page asks you to **create your account**: your name, email, a
+   password, and the **setup code**, which is your `CRON_SECRET`. The setup code stops a stranger from
+   creating the account first. After that the page is a normal sign-in.
+4. Connect the accounts on the **Accounts** page.
+5. Call the job runner every 15 minutes. Free option: **cron-job.org** → new cron job →
    URL `https://YOUR-APP.vercel.app/api/cron/tick` → every 15 minutes →
    header `Authorization: Bearer <your CRON_SECRET>`.
 
@@ -168,3 +173,6 @@ can call it too: set the repository secrets `STUDIO_URL` and `CRON_SECRET`.
 - Claude rewrites the SEO only while the helper runs on your laptop. A video that starts posting first
   keeps the basic draft.
 - If you remove a video after it was uploaded early, delete it on YouTube or Facebook too.
+- Forgot your password? On the sign-in page press **Forgot password?** and use the setup code
+  (`CRON_SECRET`). Five wrong passwords in a row lock sign-in for 15 minutes. Change your password any
+  time in **Settings**.

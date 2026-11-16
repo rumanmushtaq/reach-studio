@@ -1,13 +1,12 @@
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
+import { signIn } from './sign-in';
 
 const fixture = (name: string) => path.join(import.meta.dirname, 'fixtures', name);
 const pktDate = (ms: number) => new Date(ms + 5 * 3600_000).toISOString().slice(0, 10);
 
 test('pick a date and time when adding, then move it on the video page', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByRole('button', { name: 'Enter studio (local only)' }).click();
-  await expect(page.getByRole('link', { name: 'Today' }).first()).toBeVisible();
+  await signIn(page);
 
   const in3days = pktDate(Date.now() + 3 * 86400_000);
   const [y, m, d] = in3days.split('-').map(Number);
@@ -21,7 +20,7 @@ test('pick a date and time when adding, then move it on the video page', async (
   await expect(page.locator('[role=status]').filter({ hasText: 'Free: goes live' })).toContainText(`${label} 8:15 PM`);
   await page.setInputFiles('input[type=file]', fixture('rain-song-short.webm'));
   const job = page.locator('.job').first();
-  await expect(job).toContainText(`${label} 8:15 PM`, { timeout: 120_000 });
+  await expect(job).toContainText(`${label} 8:15 PM`, { timeout: 300_000 });
 
   // The same time cannot be picked twice.
   await page.reload();

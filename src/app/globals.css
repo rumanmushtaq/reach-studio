@@ -327,7 +327,14 @@ select.input { padding-right: 32px; }
 @media (max-width: 820px) { .toast { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }
 
 .login { max-width: 400px; margin: 14vh auto 0; padding: 0 16px; }
-.login .card { box-shadow: var(--shadow); }
+.login .card { box-shadow: var(--shadow); gap: 14px; }
+.pw { position: relative; }
+.pw .input { padding-right: 64px; }
+.pw .link { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.input[aria-invalid="true"] { border-color: var(--bad); }
 
 /* ---------- phone polish ---------- */
 @media (max-width: 560px) {

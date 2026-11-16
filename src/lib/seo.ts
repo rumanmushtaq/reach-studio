@@ -20,6 +20,16 @@ export const SeoSchema = z.object({
 });
 export type Seo = z.infer<typeof SeoSchema>;
 
+/** Claude's market research behind the SEO: what people search, what is trending, who it compared with. */
+const terms = (max: number) => z.array(z.string().trim().min(1).max(80)).catch([]).transform((l) => [...new Set(l)].slice(0, max));
+export const ResearchSchema = z.object({
+  searchTerms: terms(15),
+  hashtags: terms(20),
+  channels: terms(10),
+  notes: z.string().trim().max(1200).catch(''),
+});
+export type Research = z.infer<typeof ResearchSchema>;
+
 export type FieldKind = 'line' | 'text' | 'list';
 export type FieldDef = { key: string; label: string; kind: FieldKind; max: number; count?: 'items' | 'chars' };
 

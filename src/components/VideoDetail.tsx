@@ -2,16 +2,22 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { Controller, useForm, useWatch, type Control } from 'react-hook-form';
 import {
-  deleteVideo, moveSlot, removeCustomThumb, retry, rewriteSeo, saveSeo, saveVideoInfo, setCustomThumb, setPlatforms, thumbnailUploadUrl,
+  deleteVideo, removeCustomThumb, retry, rewriteSeo, saveSeo, saveVideoInfo, setCustomThumb, setPlatforms, thumbnailUploadUrl,
 } from '@/app/actions';
 import { put } from '@/lib/browser-video';
 import type { PostRow, VideoRow } from '@/lib/db/schema';
+import { videoInfoSchema, type VideoInfoForm } from '@/lib/forms';
 import { videoStatus } from '@/lib/plan';
 import { reachChecks } from '@/lib/reach';
-import { FIELDS, fieldUse, linksBlock, PLATFORM_NAMES, PLATFORMS, splitList, toHashtags, type FieldDef, type Links, type Platform, type Seo } from '@/lib/seo';
+import { FIELDS, fieldUse, linksBlock, PLATFORM_NAMES, PLATFORMS, SeoSchema, splitList, toHashtags, type FieldDef, type Links, type Platform, type Research, type Seo } from '@/lib/seo';
 import { EARLY_UPLOAD, formatSlot, formatTime, IG_STAGE, slotProblem } from '@/lib/slots';
+import { applyResult, Field, TextInput } from './forms';
+import { useAction, useMoveSlot } from './query';
 import { SlotPicker, type Taken } from './SlotPicker';
 import { ConfirmButton, Countdown, Icon, Pill, PlatformBadge, useToast } from './ui';
 
@@ -26,30 +32,15 @@ const len = (sec: number | null) => (sec ? `${Math.floor(sec / 60)}:${String(Mat
 export function VideoDetail(props: Props) {
   const { video, posts, now, connected } = props;
   const router = useRouter();
-  const toast = useToast();
-  const [pending, start] = useTransition();
+  const { run, pending: acting } = useAction();
+  const { move: moveVideo, pending: moving } = useMoveSlot();
+  const pending = acting || moving;
   const [tab, setTab] = useState<Platform>(PLATFORMS.find((p) => video.platforms[p]) ?? 'youtube');
   const status = videoStatus(video, posts, now);
   const anyLive = posts.some((p) => p.state === 'live');
   const writing = video.seoState !== 'ready' || !!video.claudeWantedAt;
 
-  const run = (fn: () => Promise<Result>, after?: () => void) =>
-    start(async () => {
-      const r = await fn();
-      if (!r.ok) toast(r.error ?? 'Something went wrong');
-      else { if (r.message) toast(r.message); after?.(); }
-      router.refresh();
-    });
-
-  const move = (to: number) => {
-    const from = video.slotAt;
-    start(async () => {
-      const r = await moveSlot(video.id, to);
-      if (!r.ok) toast(r.error);
-      else toast(`Moved to ${formatSlot(to)}`, from ? { label: 'Undo', run: () => void moveSlot(video.id, from).then(() => router.refresh()) } : undefined);
-      router.refresh();
-    });
-  };
+  const move = (to: number) => moveVideo(video.id, to, { name: video.name, from: video.slotAt });
 
   return (
     <>
@@ -93,7 +84,9 @@ export function VideoDetail(props: Props) {
 
           {video.seo && <Editor key={`${video.seoAt ?? 0}-${tab}`} videoId={video.id} seo={video.seo} tab={tab} links={props.links} locked={anyLive} />}
 
-          <InfoCard video={video} onSave={(info) => run(() => saveVideoInfo(video.id, info))} />
+          {video.research && <ResearchCard research={video.research} />}
+
+          <InfoCard key={`${video.name}|${video.note}`} video={video} />
         </div>
 
         <aside className="side" style={{ gap: 20 }}>
@@ -159,9 +152,11 @@ function platformLine(p: Platform, on: boolean, post: PostRow | undefined, slot:
 }
 
 function Mover({ free, taken, now, pending, onMove, video }: Props & { pending: boolean; onMove: (ms: number) => void }) {
-  const [picking, setPicking] = useState(false);
-  const [picked, setPicked] = useState<number | null>(free[0] ?? null);
+  const [picking, setPicking] = useState(false); // whether the picker is open; the picked time lives in the form
   const others = taken.filter((t) => t.slotAt !== video.slotAt);
+  const form = useForm<{ at: number | null }>({ defaultValues: { at: free[0] ?? null } });
+  const at = useWatch({ control: form.control, name: 'at' });
+  const submit = form.handleSubmit((v) => { if (v.at && !slotProblem(v.at, others, now)) onMove(v.at); });
   return (
     <>
       <span className="flabel">Move to</span>
@@ -172,10 +167,12 @@ function Mover({ free, taken, now, pending, onMove, video }: Props & { pending: 
         <button className="btn sm" aria-expanded={picking} onClick={() => setPicking((x) => !x)}>Pick a time…</button>
       </div>
       {picking && (
-        <>
-          <SlotPicker value={picked} onChange={setPicked} taken={others} now={now} idPrefix="move" />
-          <div><button className="btn dark sm" disabled={pending || !!slotProblem(picked, others, now)} onClick={() => picked && onMove(picked)}>Move here</button></div>
-        </>
+        <form onSubmit={submit} style={{ display: 'contents' }}>
+          <Controller control={form.control} name="at" render={({ field }) => (
+            <SlotPicker value={field.value} onChange={field.onChange} taken={others} now={now} idPrefix="move" />
+          )} />
+          <div><button className="btn dark sm" disabled={pending || !!slotProblem(at, others, now)}>Move here</button></div>
+        </form>
       )}
       <span className="small muted">Every move can be undone for 10 seconds.</span>
     </>
@@ -187,25 +184,26 @@ function Preview({ video, tab, seo, thumb, customThumb, connected, channel, link
 }) {
   const toast = useToast();
   const file = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  // Get a signed upload link, send the image there, then attach it to the video.
+  const thumbUpload = useMutation({
+    mutationFn: async (f: File) => {
+      const r = await thumbnailUploadUrl(video.id, f.type);
+      if (!r.ok) throw new Error(r.error);
+      await put(r.target, f, f.type).done;
+      return r.key;
+    },
+    onSuccess: (key) => run(() => setCustomThumb(video.id, key)),
+    onError: (err) => toast(err instanceof Error ? err.message : 'The image did not upload.'),
+  });
+  const busy = thumbUpload.isPending;
   const checks = reachChecks(tab, seo, { links, customThumb: !!customThumb });
   const done = checks.filter((c) => c.ok).length;
   const who = connected[tab] || channel || 'Your channel';
   const img = (tab === 'youtube' && customThumb) || thumb;
 
-  async function uploadThumb(f: File) {
+  function uploadThumb(f: File) {
     if (f.size > 2 * 1024 * 1024) return toast('YouTube thumbnails must be under 2 MB.');
-    setBusy(true);
-    try {
-      const r = await thumbnailUploadUrl(video.id, f.type);
-      if (!r.ok) return toast(r.error);
-      await put(r.target, f, f.type).done;
-      run(() => setCustomThumb(video.id, r.key));
-    } catch (err) {
-      toast((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    thumbUpload.mutate(f);
   }
 
   const body = tab === 'youtube' || tab === 'facebook'
@@ -269,13 +267,15 @@ function Preview({ video, tab, seo, thumb, customThumb, connected, channel, link
   );
 }
 
+/** Tags as chips. The list is the form's value; the half-typed tag stays in the input box itself. */
 function TagInput({ id, values, onChange, hashtags, readOnly }: { id: string; values: string[]; onChange: (v: string[]) => void; hashtags: boolean; readOnly: boolean }) {
-  const [draft, setDraft] = useState('');
-  const commit = (raw: string) => {
-    const items = hashtags ? toHashtags(raw) : splitList(raw);
-    const next = [...values, ...items.filter((x) => !values.includes(x))];
-    if (items.length) onChange(next);
-    setDraft('');
+  const box = useRef<HTMLInputElement>(null);
+  const commit = () => {
+    const el = box.current;
+    if (!el) return;
+    const items = hashtags ? toHashtags(el.value) : splitList(el.value);
+    if (items.length) onChange([...values, ...items.filter((x) => !values.includes(x))]);
+    el.value = '';
   };
   return (
     <div className="tagbox">
@@ -286,13 +286,13 @@ function TagInput({ id, values, onChange, hashtags, readOnly }: { id: string; va
       ))}
       {!readOnly && (
         <input
-          id={id} value={draft} placeholder={hashtags ? 'Add a hashtag, press Enter' : 'Add a tag, press Enter'}
-          onChange={(e) => (e.target.value.includes(',') ? commit(e.target.value) : setDraft(e.target.value))}
+          ref={box} id={id} placeholder={hashtags ? 'Add a hashtag, press Enter' : 'Add a tag, press Enter'}
+          onChange={(e) => { if (e.target.value.includes(',')) commit(); }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); commit(draft); }
-            if (e.key === 'Backspace' && !draft && values.length) onChange(values.slice(0, -1));
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            if (e.key === 'Backspace' && !e.currentTarget.value && values.length) onChange(values.slice(0, -1));
           }}
-          onBlur={() => draft.trim() && commit(draft)}
+          onBlur={(e) => { if (e.target.value.trim()) commit(); }}
         />
       )}
     </div>
@@ -301,75 +301,109 @@ function TagInput({ id, values, onChange, hashtags, readOnly }: { id: string; va
 
 function Editor({ videoId, seo: initial, tab, links, locked }: { videoId: string; seo: Seo; tab: Platform; links: Links; locked: boolean }) {
   const toast = useToast();
-  const [seo, setSeo] = useState(initial);
-  const [state, setState] = useState<'saved' | 'saving'>('saved');
+  const form = useForm<Seo>({ resolver: zodResolver(SeoSchema), defaultValues: initial });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const latest = useRef(seo);
-  latest.current = seo;
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const [waiting, setWaiting] = useState(false); // typed, not sent yet (save status, not form data)
+  const save = useMutation({
+    mutationFn: (seo: Seo) => saveSeo(videoId, seo),
+    onSuccess: (r) => { if (!r.ok) toast(r.error); },
+    onError: (err) => toast(err instanceof Error ? err.message : 'Could not save'),
+  });
+  const saving = waiting || save.isPending;
+  const saveNow = save.mutate; // stable between renders, so the effect below subscribes once
 
-  const set = (key: string, value: string | string[]) => {
-    setSeo((s) => ({ ...s, [tab]: { ...s[tab], [key]: value } }) as Seo);
-    setState('saving');
-    clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      const r = await saveSeo(videoId, latest.current);
-      if (!r.ok) toast(r.error); else setState('saved');
-    }, 700);
-  };
+  // Changes save on their own, 0.7 s after the last keystroke.
+  useEffect(() => {
+    const sub = form.watch(() => {
+      setWaiting(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => { setWaiting(false); saveNow(form.getValues()); }, 700);
+    });
+    return () => { sub.unsubscribe(); clearTimeout(timer.current); };
+  }, [form, saveNow]);
 
   const copy = async (text: string) => {
     try { await navigator.clipboard.writeText(text); toast('Copied'); } catch { toast('Select the text and press Ctrl+C'); }
   };
 
-  const field = (f: FieldDef) => {
-    const raw = (seo[tab] as Record<string, string | string[]>)[f.key];
-    const use = fieldUse(raw, f);
-    const id = `f-${tab}-${f.key}`;
-    return (
-      <div className="field" key={id}>
-        <label htmlFor={id}>
-          <span>{f.label.replace(', comma separated', '')}</span>
-          <span className="inline" style={{ gap: 10 }}>
-            <span className={`cnt ${use.over ? 'over' : ''}`}>{f.count === 'items' ? `${use.used} of ${f.max}` : `${use.used} / ${f.max}`}{use.over ? ' · too long' : ''}</span>
-            <button className="link small" onClick={(e) => { e.preventDefault(); void copy(Array.isArray(raw) ? raw.join(f.key === 'hashtags' ? ' ' : ', ') : raw); }}>Copy</button>
-          </span>
-        </label>
-        {f.kind === 'list'
-          ? <TagInput id={id} values={raw as string[]} hashtags={f.key === 'hashtags'} readOnly={locked} onChange={(v) => set(f.key, v)} />
-          : f.kind === 'text'
-            ? <textarea className="input" id={id} value={raw as string} readOnly={locked} onChange={(e) => set(f.key, e.target.value)} />
-            : <input className="input" id={id} value={raw as string} readOnly={locked} onChange={(e) => set(f.key, e.target.value)} />}
-      </div>
-    );
-  };
-
   return (
-    <section className="card" aria-labelledby="ed">
+    <form className="card" aria-labelledby="ed" onSubmit={(e) => e.preventDefault()} noValidate>
       <div className="panel-h">
         <h2 id="ed">{PLATFORM_NAMES[tab]} text</h2>
-        <span className="small muted" role="status">{locked ? 'Live: text can no longer change' : state === 'saving' ? 'Saving…' : 'Saved · changes save as you type'}</span>
+        <span className="small muted" role="status">{locked ? 'Live: text can no longer change' : saving ? 'Saving…' : 'Saved · changes save as you type'}</span>
       </div>
-      {FIELDS[tab].map(field)}
+      {FIELDS[tab].map((f) => <SeoField key={f.key} f={f} tab={tab} control={form.control} locked={locked} copy={copy} />)}
       {(tab === 'youtube' || tab === 'facebook') && (
         <div className="field"><span className="flabel">Added at the end when posting</span><div className="pdesc muted">{linksBlock(links) || <>No channel links yet. <Link href="/settings">Add them in Settings</Link>.</>}</div></div>
       )}
       {tab === 'youtube' && <p className="small muted">Cartoons post as made for kids, so YouTube turns comments off. Facebook and Instagram get the first comment.</p>}
+    </form>
+  );
+}
+
+function SeoField({ f, tab, control, locked, copy }: { f: FieldDef; tab: Platform; control: Control<Seo>; locked: boolean; copy: (t: string) => void }) {
+  const id = `f-${tab}-${f.key}`;
+  return (
+    <Controller control={control} name={`${tab}.${f.key}` as `youtube.title`} render={({ field }) => {
+      const raw = field.value as string | string[];
+      const use = fieldUse(raw, f);
+      return (
+        <div className="field">
+          <label htmlFor={id}>
+            <span>{f.label.replace(', comma separated', '')}</span>
+            <span className="inline" style={{ gap: 10 }}>
+              <span className={`cnt ${use.over ? 'over' : ''}`}>{f.count === 'items' ? `${use.used} of ${f.max}` : `${use.used} / ${f.max}`}{use.over ? ' · too long' : ''}</span>
+              <button type="button" className="link small" onClick={() => copy(Array.isArray(raw) ? raw.join(f.key === 'hashtags' ? ' ' : ', ') : raw)}>Copy</button>
+            </span>
+          </label>
+          {f.kind === 'list'
+            ? <TagInput id={id} values={raw as string[]} hashtags={f.key === 'hashtags'} readOnly={locked} onChange={field.onChange} />
+            : f.kind === 'text'
+              ? <textarea className="input" id={id} readOnly={locked} name={field.name} ref={field.ref} value={raw as string} onChange={field.onChange} onBlur={field.onBlur} />
+              : <input className="input" id={id} readOnly={locked} name={field.name} ref={field.ref} value={raw as string} onChange={field.onChange} onBlur={field.onBlur} />}
+        </div>
+      );
+    }} />
+  );
+}
+
+function ResearchCard({ research }: { research: Research }) {
+  const list = (title: string, items: string[]) => items.length > 0 && (
+    <div className="field">
+      <span className="flabel">{title}</span>
+      <div className="tagbox">{items.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
+    </div>
+  );
+  return (
+    <section className="card" aria-labelledby="research">
+      <h2 id="research">Market research by Claude</h2>
+      {research.notes && <p className="small">{research.notes}</p>}
+      {list('What people search now', research.searchTerms)}
+      {list('Trending hashtags', research.hashtags)}
+      {list('Channels compared', research.channels)}
     </section>
   );
 }
 
-function InfoCard({ video, onSave }: { video: VideoRow; onSave: (info: { name: string; note: string }) => void }) {
-  const [name, setName] = useState(video.name);
-  const [note, setNote] = useState(video.note);
-  const save = () => { if (name !== video.name || note !== video.note) onSave({ name, note }); };
+function InfoCard({ video }: { video: VideoRow }) {
+  const router = useRouter();
+  const form = useForm<VideoInfoForm>({ resolver: zodResolver(videoInfoSchema), defaultValues: { name: video.name, note: video.note } });
+  const saveInfo = useMutation({ mutationFn: (v: VideoInfoForm) => saveVideoInfo(video.id, v) });
+  const e = form.formState.errors;
+  // Saves when a field loses focus, if it changed.
+  const save = form.handleSubmit(async (v) => {
+    if (!form.formState.isDirty) return;
+    if (applyResult(form, await saveInfo.mutateAsync(v))) router.refresh();
+  });
   return (
-    <section className="card" aria-labelledby="info">
+    <form className="card" aria-labelledby="info" onSubmit={save} noValidate>
       <h2 id="info">Details</h2>
-      <div className="field"><label htmlFor="vname">Video name</label><input className="input" id="vname" value={name} onChange={(e) => setName(e.target.value)} onBlur={save} /></div>
-      <div className="field"><label htmlFor="vnote">What happens in it <span className="muted" style={{ fontWeight: 400 }}>Used by Rewrite with Claude</span></label><input className="input" id="vnote" value={note} placeholder="Leo finds a magic lamp in the old bazaar" onChange={(e) => setNote(e.target.value)} onBlur={save} /></div>
+      <Field id="vname" label="Video name" error={e.name}><TextInput form={form} name="name" id="vname" onBlur={() => void save()} /></Field>
+      <Field id="vnote" label="What happens in it" hint="Used by Rewrite with Claude" error={e.note}>
+        <TextInput form={form} name="note" id="vnote" placeholder="Leo finds a magic lamp in the old bazaar" onBlur={() => void save()} />
+      </Field>
       <p className="small muted">{video.fileName}</p>
-    </section>
+    </form>
   );
 }
 

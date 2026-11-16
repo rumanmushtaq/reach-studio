@@ -1,6 +1,6 @@
 import { jwtVerify, SignJWT } from 'jose';
 
-// Owner login (Google). Works in middleware (edge) and on the server, so it reads process.env directly.
+// Owner login (email and password). Works in middleware (edge) and on the server, so it reads process.env directly.
 export const SESSION_COOKIE = 'rs_session';
 const MAX_AGE_DAYS = 30;
 
@@ -18,6 +18,17 @@ export async function createSession(email: string): Promise<{ token: string; max
     .setExpirationTime(`${MAX_AGE_DAYS}d`)
     .sign(secret());
   return { token, maxAge };
+}
+
+/** The signed-in email, or null. */
+export async function sessionEmail(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] });
+    return typeof payload.email === 'string' ? payload.email : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function isValidSession(token: string | undefined): Promise<boolean> {

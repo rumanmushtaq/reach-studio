@@ -1,5 +1,5 @@
 import { bigint, integer, jsonb, pgTable, real, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import type { Links, Platform, Seo } from '../seo';
+import type { Links, Platform, Research, Seo } from '../seo';
 
 // Times are epoch milliseconds.
 
@@ -10,6 +10,17 @@ export const settings = pgTable('settings', {
   niche: text('niche').notNull(),
   links: jsonb('links').$type<Links>().notNull(),
   helperSeenAt: bigint('helper_seen_at', { mode: 'number' }), // last call from the Claude helper on the laptop
+});
+
+// People who can sign in to the studio. The first one is created on the sign-in page with the setup code.
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(), // scrypt, see password.ts
+  failedLogins: integer('failed_logins').notNull().default(0),
+  lockedUntil: bigint('locked_until', { mode: 'number' }),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
 });
 
 export const accounts = pgTable('accounts', {
@@ -49,6 +60,7 @@ export const videos = pgTable('videos', {
   seoAt: bigint('seo_at', { mode: 'number' }),
   // Waiting for the Claude helper to write the SEO (it replaces the basic draft), and when it took the job.
   claudeWantedAt: bigint('claude_wanted_at', { mode: 'number' }),
+  research: jsonb('research').$type<Research>(), // Claude's market research for this video
   claudeClaimedAt: bigint('claude_claimed_at', { mode: 'number' }),
   slotAt: bigint('slot_at', { mode: 'number' }),
   fileDeletedAt: bigint('file_deleted_at', { mode: 'number' }),
@@ -75,11 +87,16 @@ export type VideoRow = typeof videos.$inferSelect;
 export type PostRow = typeof posts.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type SettingsRow = typeof settings.$inferSelect;
+export type UserRow = typeof users.$inferSelect;
 
 // Created on first use (single-owner app, no migration tool needed). Keep in step with the tables above.
 export const BOOTSTRAP_SQL = `
 CREATE TABLE IF NOT EXISTS settings (
   id integer PRIMARY KEY, times jsonb NOT NULL, channel text NOT NULL, niche text NOT NULL, links jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+  id text PRIMARY KEY, name text NOT NULL, email text NOT NULL UNIQUE, password_hash text NOT NULL,
+  failed_logins integer NOT NULL DEFAULT 0, locked_until bigint, created_at bigint NOT NULL
 );
 CREATE TABLE IF NOT EXISTS accounts (
   platform text PRIMARY KEY, external_id text NOT NULL, name text NOT NULL, tokens text NOT NULL, connected_at bigint NOT NULL
@@ -95,6 +112,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS videos_slot_at ON videos (slot_at);
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS custom_thumb_key text;
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS claude_wanted_at bigint;
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS claude_claimed_at bigint;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS research jsonb;
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS helper_seen_at bigint;
 CREATE TABLE IF NOT EXISTS posts (
   id text PRIMARY KEY, video_id text NOT NULL REFERENCES videos(id) ON DELETE CASCADE, platform text NOT NULL,

@@ -2,20 +2,19 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
-import { moveSlot } from '@/app/actions';
+import { useState } from 'react';
 import { at, DAY, dayStart, formatDay, formatSlot, formatTime, MIN_AHEAD, normaliseTimes, pktTime, timeLabel } from '@/lib/slots';
-import { Icon, useToast } from './ui';
+import { useMoveSlot } from './query';
+import { Icon } from './ui';
 
 export type CalVideo = { id: string; name: string; slotAt: number; fixed: boolean; live: boolean; platforms: string };
 
 export function Calendar({ videos, times, now }: { videos: CalVideo[]; times: string[]; now: number }) {
   const router = useRouter();
-  const toast = useToast();
   const [week, setWeek] = useState(0);
   const [moving, setMoving] = useState<string | null>(null);
   const [over, setOver] = useState<number | null>(null);
-  const [, start] = useTransition();
+  const { move: moveVideo } = useMoveSlot();
 
   const daily = normaliseTimes(times);
   const today = dayStart(now);
@@ -24,14 +23,11 @@ export function Calendar({ videos, times, now }: { videos: CalVideo[]; times: st
   const bySlot = new Map(videos.map((v) => [v.slotAt, v]));
   const movingVideo = videos.find((v) => v.id === moving);
 
-  const move = (id: string, to: number) => start(async () => {
+  const move = (id: string, to: number) => {
     const v = videos.find((x) => x.id === id);
     setMoving(null);
-    const r = await moveSlot(id, to);
-    if (!r.ok) toast(r.error);
-    else toast(`Moved ${v?.name ?? 'video'} to ${formatSlot(to)}`, v ? { label: 'Undo', run: () => void moveSlot(id, v.slotAt).then(() => router.refresh()) } : undefined);
-    router.refresh();
-  });
+    moveVideo(id, to, { name: v?.name ?? 'video', from: v?.slotAt ?? null });
+  };
 
   const cell = (ms: number) => {
     const v = bySlot.get(ms);

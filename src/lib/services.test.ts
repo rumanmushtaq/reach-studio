@@ -61,7 +61,7 @@ describe('job runner', { timeout: 120_000 }, () => {
       id: 'v1', name: 'Leo and the Magic Lamp', note: 'Leo finds a lamp', fileName: 'leo.mp4', fileKey, fileSize: 5, mime: 'video/mp4',
       duration: 45, width: 1080, height: 1920, shape: 'vertical', thumbKey: null, customThumbKey: null, frameKeys: [],
       platforms: { youtube: true, facebook: true, instagram: true, tiktok: true }, uploadState: 'ready',
-      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null,
+      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null, research: null,
       slotAt: null, fileDeletedAt: null, createdAt: START,
     });
 
@@ -231,18 +231,24 @@ describe('job runner', { timeout: 120_000 }, () => {
     const job = jobs.find((j) => j.id === 'v5')!;
     expect(job.prompt).toContain('frame-1.jpg');
     expect(job.prompt).toContain('Bunty Bakes a Cake');
+    expect(job.prompt).toContain('research the market');
     expect(job.frames).toHaveLength(1);
     expect((await repo.getSettings()).helperSeenAt).toBe(START);
     // A taken job is not handed out twice while the helper works on it.
     expect((await svc.helperJobs(START + slots.MINUTE)).map((j) => j.id)).not.toContain('v5');
 
     // Claude's answer replaces the draft; missing fields fall back to the draft.
-    const seo = { youtube: { title: 'Bunty ka Cake | Bunty Bakes a Cake', tags: ['bunty'] } };
+    const seo = {
+      youtube: { title: 'Bunty ka Cake | Bunty Bakes a Cake', tags: ['bunty'] },
+      research: { searchTerms: ['bunty cartoon', 'bunty cartoon'], hashtags: ['#bunty'], channels: 'not a list', notes: 'Baking stories are up.' },
+    };
     expect(await svc.helperResult('v5', { seo })).toBe('saved');
     const v = (await repo.getVideo('v5'))!;
     expect(v).toMatchObject({ seoSource: 'claude', claudeWantedAt: null, claudeClaimedAt: null, seoNote: null });
     expect(v.seo?.youtube.title).toBe('Bunty ka Cake | Bunty Bakes a Cake');
     expect(v.seo?.tiktok.caption.length).toBeGreaterThan(0);
+    // Its market research is kept, cleaned: duplicates dropped, a bad field emptied.
+    expect(v.research).toEqual({ searchTerms: ['bunty cartoon'], hashtags: ['#bunty'], channels: [], notes: 'Baking stories are up.' });
 
     // A rewrite asked for after posting started is dropped with a note, never sent to the helper.
     await repo.updateVideo('v5', { claudeWantedAt: START + 2 * slots.MINUTE });

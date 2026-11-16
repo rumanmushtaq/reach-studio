@@ -2,8 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
 import { connectTikTok, disconnect } from '@/app/actions';
+import { tiktokSchema, type TikTokForm } from '@/lib/forms';
+import { applyResult, Field, TextInput } from './forms';
+import { useAction } from './query';
 import { PLATFORM_NAMES, PLATFORMS, type Platform } from '@/lib/seo';
 import { ConfirmButton, Icon, PlatformBadge, useToast } from './ui';
 
@@ -19,14 +24,13 @@ export type SetupState = { claude: boolean; storage: boolean; google: boolean; m
 export function AccountsView({ connected, setup, banner }: { connected: Record<Platform, string | null>; setup: SetupState; banner: { ok?: string; error?: string } }) {
   const router = useRouter();
   const toast = useToast();
-  const [pending, start] = useTransition();
-  const [key, setKey] = useState('');
-  const [user, setUser] = useState('');
-
-  const run = (fn: () => Promise<{ ok: boolean; message?: string; error?: string }>) => start(async () => {
-    const r = await fn();
-    toast(r.ok ? r.message ?? 'Done' : r.error ?? 'Something went wrong');
-    router.refresh();
+  const { run } = useAction();
+  const connectTikTokCall = useMutation({ mutationFn: connectTikTok });
+  const tiktok = useForm<TikTokForm>({ resolver: zodResolver(tiktokSchema), defaultValues: { apiKey: '', user: '' } });
+  const te = tiktok.formState.errors;
+  const submitTikTok = tiktok.handleSubmit(async (v) => {
+    const r = await connectTikTokCall.mutateAsync(v);
+    if (applyResult(tiktok, r)) { toast('TikTok connected'); tiktok.reset(); router.refresh(); }
   });
 
   const steps: [string, boolean, React.ReactNode][] = [
@@ -41,10 +45,14 @@ export function AccountsView({ connected, setup, banner }: { connected: Record<P
     if (p === 'youtube') return setup.google ? <a className="btn dark" href="/api/oauth/google/start">Connect YouTube</a> : <span className="small muted">Add the Google keys first (README step 4).</span>;
     if (p === 'facebook' || p === 'instagram') return setup.meta ? <a className="btn dark" href="/api/oauth/meta/start">Connect Facebook and Instagram</a> : <span className="small muted">Add the Meta keys first (README step 5).</span>;
     return (
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); run(() => connectTikTok({ apiKey: key, user })); }}>
-        <label style={{ flex: '1 1 180px' }}><span className="sr-only">Upload-Post API key</span><input className="input" placeholder="Upload-Post API key" value={key} onChange={(e) => setKey(e.target.value)} /></label>
-        <label style={{ flex: '1 1 140px' }}><span className="sr-only">Upload-Post profile name</span><input className="input" placeholder="Profile name" value={user} onChange={(e) => setUser(e.target.value)} /></label>
-        <button className="btn dark" disabled={pending}>Connect TikTok</button>
+      <form className="inline" style={{ alignItems: 'flex-start' }} onSubmit={submitTikTok} noValidate>
+        <div style={{ flex: '1 1 180px' }}><Field id="tt-key" label={<span className="sr-only">Upload-Post API key</span>} error={te.apiKey}>
+          <TextInput form={tiktok} name="apiKey" id="tt-key" placeholder="Upload-Post API key" autoComplete="off" />
+        </Field></div>
+        <div style={{ flex: '1 1 140px' }}><Field id="tt-user" label={<span className="sr-only">Upload-Post profile name</span>} error={te.user}>
+          <TextInput form={tiktok} name="user" id="tt-user" placeholder="Profile name" autoComplete="off" />
+        </Field></div>
+        <button className="btn dark" disabled={tiktok.formState.isSubmitting}>Connect TikTok</button>
       </form>
     );
   };

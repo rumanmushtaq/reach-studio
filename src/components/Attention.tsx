@@ -1,25 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
 import { deleteVideo, retry } from '@/app/actions';
 import type { Attention } from '@/lib/attention';
 import { PLATFORM_NAMES } from '@/lib/seo';
-import { PlatformBadge, useToast } from './ui';
+import { useAction } from './query';
+import { PlatformBadge } from './ui';
 
 /** The "Needs you" box: one row per problem, each with the button that fixes it. */
 export function AttentionBox({ items }: { items: Attention[] }) {
-  const router = useRouter();
-  const toast = useToast();
-  const [pending, start] = useTransition();
+  const { run, pending } = useAction();
   if (!items.length) return null;
-
-  const run = (fn: () => Promise<{ ok: boolean; message?: string; error?: string }>) => start(async () => {
-    const r = await fn();
-    toast(r.ok ? r.message ?? 'Done' : r.error ?? 'Something went wrong');
-    router.refresh();
-  });
 
   return (
     <section className="attention" aria-labelledby="needs-you">

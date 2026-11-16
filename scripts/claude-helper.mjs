@@ -3,7 +3,8 @@
 // so the studio needs no Claude API key. Leave it running on your laptop: `npm run claude-helper`.
 //
 // It asks the studio for videos waiting for Claude about once a minute, saves their frames to a
-// temporary folder, runs `claude -p` there (it may only read files and search the web), and sends
+// temporary folder, runs `claude -p` there (it may only read files, search the web and read web pages to
+// research the market), and sends
 // the answer back. Until it does, videos use the studio's basic SEO draft.
 //
 // Settings (from .env.local or the environment):
@@ -35,6 +36,7 @@ const SCHEMA = JSON.stringify(obj({
   facebook: obj({ title: str, description: str, hashtags: list, pinned: str }),
   instagram: obj({ caption: str, hashtags: list, pinned: str, coverText: str }),
   tiktok: obj({ caption: str, hashtags: list }),
+  research: obj({ searchTerms: list, hashtags: list, channels: list, notes: str }),
 }));
 
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
@@ -52,7 +54,7 @@ async function studio(pathname, init = {}) {
 /** Runs Claude Code in print mode in `dir`, with the prompt on stdin. Resolves with its JSON output. */
 function runClaude(prompt, dir) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'json', '--json-schema', SCHEMA, '--no-session-persistence', '--allowedTools', 'Read WebSearch'];
+    const args = ['-p', '--output-format', 'json', '--json-schema', SCHEMA, '--no-session-persistence', '--allowedTools', 'Read WebSearch WebFetch'];
     const child = spawn('claude', args, { cwd: dir, shell: process.platform === 'win32', windowsHide: true });
     let out = '';
     let err = '';

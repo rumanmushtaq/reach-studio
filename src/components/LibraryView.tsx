@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import type { Chip } from '@/lib/schedule';
 import type { Status } from '@/lib/plan';
 import { formatSlot } from '@/lib/slots';
@@ -18,7 +20,8 @@ const TABS = [
 
 export function LibraryView({ items }: { items: LibItem[] }) {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>('all');
-  const [q, setQ] = useState('');
+  const search = useForm<{ q: string }>({ defaultValues: { q: '' } });
+  const q = useWatch({ control: search.control, name: 'q' }) ?? '';
   const shown = useMemo(() => items.filter((i) => (tab === 'all' || i.group === tab) && i.name.toLowerCase().includes(q.trim().toLowerCase())), [items, tab, q]);
   const count = (k: string) => (k === 'all' ? items.length : items.filter((i) => i.group === k).length);
 
@@ -34,13 +37,32 @@ export function LibraryView({ items }: { items: LibItem[] }) {
         </div>
         <label style={{ flex: '1 1 220px', maxWidth: 340 }}>
           <span className="sr-only">Search videos</span>
-          <input className="input" type="search" placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input" type="search" placeholder="Search by name" {...search.register('q')} />
         </label>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {shown.length === 0 && <div className="empty">{items.length ? 'No videos match.' : <>No videos yet. <Link href="/upload">Add your first cartoon</Link>.</>}</div>}
-        {shown.map((i) => (
-          <Link key={i.id} href={`/videos/${i.id}`} className="lib-row">
+      {shown.length === 0
+        ? <div className="empty">{items.length ? 'No videos match.' : <>No videos yet. <Link href="/upload">Add your first cartoon</Link>.</>}</div>
+        : <Rows items={shown} />}
+    </>
+  );
+}
+
+const ROW_GAP = 8;
+
+/** Only the rows on screen are in the page, so the library stays fast with hundreds of videos. */
+function Rows({ items }: { items: LibItem[] }) {
+  const list = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState(0); // where the list starts on the page, for the window scroller
+  useLayoutEffect(() => { setOffset(list.current?.offsetTop ?? 0); }, []);
+  const rows = useWindowVirtualizer({ count: items.length, estimateSize: () => 92 + ROW_GAP, overscan: 6, scrollMargin: offset });
+  return (
+    <div ref={list} role="list" style={{ position: 'relative', height: rows.getTotalSize() }}>
+      {rows.getVirtualItems().map((r) => {
+        const i = items[r.index];
+        return (
+          <div key={i.id} role="listitem" data-index={r.index} ref={rows.measureElement}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', paddingBottom: ROW_GAP, transform: `translateY(${r.start - rows.options.scrollMargin}px)` }}>
+            <Link href={`/videos/${i.id}`} className="lib-row">
             <Thumb url={i.thumb} vertical={i.vertical} />
             <span style={{ minWidth: 0 }}>
               <b style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.name}</b>
@@ -48,9 +70,10 @@ export function LibraryView({ items }: { items: LibItem[] }) {
             </span>
             <span className="when mono small">{formatSlot(i.slotAt)}</span>
             <Pill status={i.status} />
-          </Link>
-        ))}
-      </div>
-    </>
+            </Link>
+          </div>
+        );
+      })}
+    </div>
   );
 }

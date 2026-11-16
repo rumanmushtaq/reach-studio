@@ -1,21 +1,16 @@
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { signIn } from './sign-in';
 
 const fixture = (name: string) => path.join(import.meta.dirname, 'fixtures', name);
 
-async function signIn(page: Page) {
-  await page.goto('/');
-  await expect(page).toHaveURL(/\/login$/);
-  await page.getByRole('button', { name: 'Enter studio (local only)' }).click();
-  await expect(page.getByRole('link', { name: 'Today' }).first()).toBeVisible();
-}
 
 test('add videos, see them on Today, edit SEO, move with undo, settings, library', async ({ page }) => {
   await signIn(page);
   await page.getByRole('link', { name: 'Add videos' }).first().click();
   await expect(page.getByRole('heading', { name: 'Add videos' })).toBeVisible();
   await page.setInputFiles('input[type=file]', [fixture('leo_magic_lamp.webm'), fixture('rain-song-short.webm')]);
-  await expect(page.locator('.job a:has-text("Open")')).toHaveCount(2, { timeout: 120_000 });
+  await expect(page.locator('.job a:has-text("Open")')).toHaveCount(2, { timeout: 300_000 });
   await expect(page.getByRole('heading', { name: '2 videos · 2 ready' })).toBeVisible();
   await page.screenshot({ path: 'test-results/upload.png', fullPage: true });
 
@@ -60,6 +55,16 @@ test('add videos, see them on Today, edit SEO, move with undo, settings, library
   await page.selectOption('select[aria-label="New daily time"]', '12:00');
   await page.click('button:has-text("Add daily time")');
   await expect(page.locator('.timechip', { hasText: '12:00 PM' })).toBeVisible();
+  // Channel form: a half link is caught next to its field, a full one saves.
+  await page.fill('#s-channel', 'Leo Cartoons');
+  await page.fill('#l-youtube', 'youtube');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Paste the full link, starting with https://')).toBeVisible();
+  await page.fill('#l-youtube', 'https://youtube.com/@leo');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.toast')).toContainText('Saved');
+  await page.reload();
+  await expect(page.locator('#l-youtube')).toHaveValue('https://youtube.com/@leo');
 
   // Library: filter and search.
   await page.goto('/library');

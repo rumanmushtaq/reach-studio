@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       id, name: b.name, note: b.note, fileName: b.fileName, fileKey, fileSize: b.size, mime: b.mime || 'video/mp4',
       duration: b.duration, width: b.width, height: b.height, shape, thumbKey, customThumbKey: null, frameKeys,
       platforms: defaultPlatforms(shape, b.duration), uploadState: 'uploading',
-      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null,
+      seo: null, seoSource: null, seoState: 'pending', seoNote: null, seoStartedAt: null, seoAt: null, claudeWantedAt: null, claudeClaimedAt: null, research: null,
       slotAt: b.slotAt, fileDeletedAt: null, createdAt: Date.now(),
     });
   } catch {
