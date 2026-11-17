@@ -5,7 +5,7 @@ import { codePending, isOwner, supabaseConfig } from './lib/supabase/config';
 // Every page needs the signed-in studio owner (Supabase Auth), with their 2-step code when they turned it on.
 // The job runner and the Claude helper check CRON_SECRET; signed local file links check their own signature.
 const MACHINE = [/^\/api\/cron\//, /^\/api\/helper\//, /^\/api\/local-files\//];
-const SIGN_IN = [/^\/login$/, /^\/auth\//];
+const SIGN_IN = [/^\/login$/, /^\/register$/, /^\/auth\//];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -34,7 +34,7 @@ export async function middleware(req: NextRequest) {
 
   if (SIGN_IN.some((re) => re.test(pathname))) {
     // Already fully signed in: the sign-in page has nothing to do.
-    if (pathname === '/login' && owner && !needsCode) return keep(res, NextResponse.redirect(new URL('/', req.url)));
+    if ((pathname === '/login' || pathname === '/register') && owner && !needsCode) return keep(res, NextResponse.redirect(new URL('/', req.url)));
     return res;
   }
   // The reset-password page asks for the 2-step code itself.

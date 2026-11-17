@@ -5,7 +5,7 @@ export const OWNER = { name: 'Test Owner', email: 'owner@reach.test', password: 
 
 /** Signs in, creating and confirming the account first on a fresh studio. */
 export async function signIn(page: Page) {
-  await page.goto('/login');
+  await page.goto('/register');
   const create = page.getByRole('button', { name: 'Create account' });
   const signInButton = page.getByRole('button', { name: 'Sign in', exact: true });
   await expect(create.or(signInButton)).toBeVisible();

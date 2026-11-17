@@ -10,8 +10,11 @@ const NEW_PASSWORD = 'brand-new-pass-7';
 const THIRD_PASSWORD = 'third-pass-word-9';
 
 test('register, confirm, sign in, forgot password, 2-step code, change password', async ({ page, browser }) => {
-  // Fresh studio: the sign-in page asks to create the account, and checks the form before sending it.
+  // Fresh studio: the sign-in page points to the register page, which checks the form before sending it.
   await page.goto('/login');
+  await expect(page.getByText('This studio has no account yet')).toBeVisible();
+  await page.getByRole('link', { name: 'Create one' }).click();
+  await expect(page).toHaveURL(/\/register/);
   await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
   await page.locator('#password').fill('short');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -23,7 +26,7 @@ test('register, confirm, sign in, forgot password, 2-step code, change password'
   // Another browser opens the create form before the account exists.
   const other = await browser.newContext();
   const stale = await other.newPage();
-  await stale.goto('/login');
+  await stale.goto('/register');
   await expect(stale.getByRole('button', { name: 'Create account' })).toBeVisible();
 
   // Register: Supabase signUp, then "check your inbox"; sending it again works.

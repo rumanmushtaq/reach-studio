@@ -2,6 +2,8 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
+import { Eye, EyeOff } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useForm, type FieldValues, type Path, type UseFormReturn } from 'react-hook-form';
 import { createOwner, resendConfirmation, sendResetLink, setNewPassword, signIn, signOut, verifySignInCode } from '@/app/auth-actions';
@@ -9,9 +11,10 @@ import {
   forgotSchema, loginSchema, mfaCodeSchema, newPasswordSchema, setupSchema,
   type ForgotForm, type FormResult, type LoginForm, type MfaCodeForm, type NewPasswordForm, type SetupForm,
 } from '@/lib/forms';
+import { AuthShell } from './AuthShell';
 import { applyResult, Field, FormError, TextInput } from './forms';
 
-// Sign-in screens on Supabase Auth: register → check your inbox, sign in → 2-step code, forgot password →
+// Sign-in screens on Supabase Auth: register (/register) → check your inbox; sign in (/login) → 2-step code; forgot password →
 // check your inbox → new password. Form values live in react-hook-form; useState only picks the screen.
 
 export type Notice = { tone: 'info' | 'good' | 'bad'; text: string };
@@ -45,7 +48,9 @@ function PasswordInput<T extends FieldValues>({ form, name, id, autoComplete, au
   return (
     <div className="pw">
       <TextInput form={form} name={name} id={id} type={shown ? 'text' : 'password'} autoComplete={autoComplete} autoFocus={autoFocus} />
-      <button type="button" className="link small" onClick={() => setShown((s) => !s)} aria-controls={id} aria-pressed={shown}>{shown ? 'Hide' : 'Show'}</button>
+      <button type="button" className="pw-toggle" onClick={() => setShown((s) => !s)} aria-controls={id} aria-pressed={shown} aria-label={shown ? 'Hide password' : 'Show password'} title={shown ? 'Hide password' : 'Show password'}>
+        {shown ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+      </button>
     </div>
   );
 }
@@ -135,7 +140,7 @@ function Inbox({ kind, email, onBack }: { kind: 'confirm' | 'reset'; email: stri
   );
 }
 
-function SignInForm({ notice, onForgot, onCode }: { notice?: Notice; onForgot: () => void; onCode: () => void }) {
+function SignInForm({ notice, canRegister, onForgot, onCode }: { notice?: Notice; canRegister: boolean; onForgot: () => void; onCode: () => void }) {
   const form = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
   const { errors, isSubmitting } = form.formState;
   // On success the server action opens Today; with 2-step on, it asks for the code first.
@@ -154,6 +159,7 @@ function SignInForm({ notice, onForgot, onCode }: { notice?: Notice; onForgot: (
         <PasswordInput form={form} name="password" id="password" autoComplete="current-password" />
       </Field>
       <SubmitButton busy={isSubmitting} idle="Sign in" working="Signing in…" />
+      {canRegister && <p className="small muted center">No account yet? <Link className="link" href="/register">Create one</Link></p>}
     </form>
   );
 }
@@ -181,27 +187,32 @@ function SetupFormView({ needsCode, onSent }: { needsCode: boolean; onSent: (ema
   const { submit } = useFormAction(form, createOwner, (r) => { if (r.code === 'check-email') onSent(r.message ?? form.getValues('email')); });
   return (
     <form className="card auth-card" onSubmit={submit} noValidate>
-      <Brand title="Create your account" sub="You do this once. After that you sign in with this email and password." />
+      <Brand title="Create your account" sub="One time only. After this you sign in with this email and password." />
       <FormError message={errors.root?.message} />
-      <Field id="name" label="Your name" error={errors.name}>
-        <TextInput form={form} name="name" id="name" autoComplete="name" autoFocus />
-      </Field>
-      <Field id="email" label="Email" hint="we send a confirmation link here" error={errors.email}>
-        <TextInput form={form} name="email" id="email" type="email" autoComplete="email" inputMode="email" />
-      </Field>
-      <Field id="password" label="Password" error={errors.password}>
-        <PasswordInput form={form} name="password" id="password" autoComplete="new-password" />
-        <PasswordRules form={form} name="password" />
-      </Field>
-      <Field id="confirm" label="Type the password again" error={errors.confirm}>
-        <PasswordInput form={form} name="confirm" id="confirm" autoComplete="new-password" />
-      </Field>
+      <div className="auth-row">
+        <Field id="name" label="Your name" error={errors.name}>
+          <TextInput form={form} name="name" id="name" autoComplete="name" autoFocus />
+        </Field>
+        <Field id="email" label="Email" error={errors.email}>
+          <TextInput form={form} name="email" id="email" type="email" autoComplete="email" inputMode="email" />
+        </Field>
+      </div>
+      <div className="auth-row">
+        <Field id="password" label="Password" error={errors.password}>
+          <PasswordInput form={form} name="password" id="password" autoComplete="new-password" />
+        </Field>
+        <Field id="confirm" label="Type it again" error={errors.confirm}>
+          <PasswordInput form={form} name="confirm" id="confirm" autoComplete="new-password" />
+        </Field>
+      </div>
+      <PasswordRules form={form} name="password" />
       {needsCode && (
         <Field id="code" label="Setup code" hint="the CRON_SECRET you set in Vercel" error={errors.code}>
           <TextInput form={form} name="code" id="code" autoComplete="off" />
         </Field>
       )}
       <SubmitButton busy={isSubmitting} idle="Create account" working="Creating your account…" />
+      <p className="small muted center">We email you a link to confirm the address. <Link className="link" href="/login">Sign in instead</Link></p>
     </form>
   );
 }
@@ -223,7 +234,8 @@ function ForgotPasswordForm({ onSent, onBack }: { onSent: (email: string) => voi
   );
 }
 
-export function SignInView({ firstRun, needsCode, notice, startAt }: { firstRun: boolean; needsCode: boolean; notice?: Notice; startAt?: 'mfa' }) {
+/** The /login page: sign in, 2-step code, forgot password. */
+export function SignInView({ canRegister, notice, startAt }: { canRegister: boolean; notice?: Notice; startAt?: 'mfa' }) {
   const [screen, setScreen] = useState<Screen>(startAt === 'mfa' ? { name: 'mfa' } : { name: 'signin' }); // which screen, not form data
   const [hashNotice, setHashNotice] = useState<Notice>();
   useEffect(() => {
@@ -234,13 +246,25 @@ export function SignInView({ firstRun, needsCode, notice, startAt }: { firstRun:
   }, []);
   const toSignIn = () => setScreen({ name: 'signin' });
   return (
-    <main className="login">
-      {screen.name === 'inbox' ? <Inbox kind={screen.kind} email={screen.email} onBack={firstRun && screen.kind === 'confirm' ? () => location.reload() : toSignIn} />
-        : firstRun ? <SetupFormView needsCode={needsCode} onSent={(email) => setScreen({ name: 'inbox', kind: 'confirm', email })} />
+    <AuthShell>
+      {screen.name === 'inbox' ? <Inbox kind={screen.kind} email={screen.email} onBack={toSignIn} />
         : screen.name === 'mfa' ? <CodeForm />
         : screen.name === 'forgot' ? <ForgotPasswordForm onBack={toSignIn} onSent={(email) => setScreen({ name: 'inbox', kind: 'reset', email })} />
-        : <SignInForm notice={hashNotice ?? notice} onForgot={() => setScreen({ name: 'forgot' })} onCode={() => setScreen({ name: 'mfa' })} />}
-    </main>
+        : <SignInForm notice={hashNotice ?? notice} canRegister={canRegister} onForgot={() => setScreen({ name: 'forgot' })} onCode={() => setScreen({ name: 'mfa' })} />}
+    </AuthShell>
+  );
+}
+
+/** The /register page: create the one studio account, then check the inbox. */
+export function RegisterView({ needsCode }: { needsCode: boolean }) {
+  const [sentTo, setSentTo] = useState<string>(); // which screen, not form data
+  return (
+    <AuthShell wide>
+      {sentTo
+        // The account exists now, so reloading opens sign-in.
+        ? <Inbox kind="confirm" email={sentTo} onBack={() => location.reload()} />
+        : <SetupFormView needsCode={needsCode} onSent={setSentTo} />}
+    </AuthShell>
   );
 }
 
@@ -253,7 +277,7 @@ export function NewPasswordView({ email, needsCode }: { email: string; needsCode
   const { errors, isSubmitting } = form.formState;
   const { submit } = useFormAction(form, setNewPassword, () => undefined); // success signs out and opens sign-in
   return (
-    <main className="login">
+    <AuthShell>
       <form className="card auth-card" onSubmit={submit} noValidate>
         <Brand title="Set a new password" sub={`For ${email}. After this you sign in with the new password, and other devices are signed out.`} />
         <FormError message={errors.root?.message} />
@@ -271,6 +295,6 @@ export function NewPasswordView({ email, needsCode }: { email: string; needsCode
         )}
         <SubmitButton busy={isSubmitting} idle="Save new password" working="Saving…" />
       </form>
-    </main>
+    </AuthShell>
   );
 }
