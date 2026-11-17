@@ -49,8 +49,10 @@ CREATE TABLE IF NOT EXISTS schema_version (id integer PRIMARY KEY, hash text NOT
 INSERT INTO schema_version (id, hash) VALUES (1, '${SCHEMA_HASH}') ON CONFLICT (id) DO UPDATE SET hash = EXCLUDED.hash;`).simple();
     });
   } catch (e) {
-    // A busy table: the existing tables still work, and the next cold start tries again.
-    console.error('Database setup skipped:', e instanceof Error ? e.message : e);
+    // Only a busy table is skipped (55P03, lock timeout): the existing tables still work, and the next cold
+    // start tries again. Anything else fails the open, so the next call retries it.
+    if ((e as { code?: string }).code !== '55P03') throw e;
+    console.error('Database setup skipped, a table is busy:', (e as Error).message);
   }
 }
 

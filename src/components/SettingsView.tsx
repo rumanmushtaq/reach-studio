@@ -48,6 +48,8 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn }:
     <>
       <header className="head"><div><h1>Settings</h1><p className="small muted">Set these once. They apply to every new video.</p></div></header>
 
+      <div className="settings-grid">
+      <div className="stack">
       <section className="card" aria-labelledby="times">
         <h2 id="times">Daily posting times</h2>
         <p className="small muted">Every day gets these slots, in Pakistan time. New videos take the next free one. Changing them does not move videos already booked.</p>
@@ -92,6 +94,9 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn }:
         </div>
       </form>
 
+      </div>
+
+      <div className="stack">
       <form className="card" onSubmit={submitPassword} aria-labelledby="pw" noValidate>
         <h2 id="pw">Sign-in</h2>
         <p className="small muted">{email ? <>Signed in as <b>{email}</b>. </> : null}Change your password here. Forgot it? Use “Forgot password?” on the sign-in page and we email you a link.</p>
@@ -107,6 +112,8 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn }:
       </form>
 
       <TwoStepCard on={twoStepOn} />
+      </div>
+      </div>
     </>
   );
 }

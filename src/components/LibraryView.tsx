@@ -1,5 +1,6 @@
 'use client';
 
+import { Clapperboard } from 'lucide-react';
 import Link from 'next/link';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -41,7 +42,19 @@ export function LibraryView({ items }: { items: LibItem[] }) {
         </label>
       </div>
       {shown.length === 0
-        ? <div className="empty">{items.length ? 'No videos match.' : <>No videos yet. <Link href="/upload">Add your first cartoon</Link>.</>}</div>
+        ? items.length ? <div className="empty">No videos match.</div> : (
+          <div className="empty-hero">
+            <span className="empty-icon"><Clapperboard size={28} aria-hidden /></span>
+            <h2>Your library is empty</h2>
+            <p className="muted">Every cartoon you add shows up here, with where and when it posts.</p>
+            <Link className="btn primary" href="/upload"><Icon name="plus" size={18} stroke={2.4} />Add your first cartoon</Link>
+            <ul className="empty-tips small muted">
+              <li><b>Any size</b> Shorts and long videos, from your computer.</li>
+              <li><b>Claude writes the SEO</b> Titles, descriptions and tags for each platform.</li>
+              <li><b>Booked for you</b> Each video takes the next free daily slot.</li>
+            </ul>
+          </div>
+        )
         : <Rows items={shown} />}
     </>
   );

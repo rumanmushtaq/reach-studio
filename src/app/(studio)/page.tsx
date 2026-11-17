@@ -1,3 +1,4 @@
+import { Check, Link2, Sparkles, UploadCloud, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { AttentionBox } from '@/components/Attention';
 import { Countdown, Icon, PlatformBadge, Thumb } from '@/components/ui';
@@ -30,6 +31,14 @@ export default async function TodayPage() {
   const posted7 = d.videos.filter((v) => v.slotAt && v.slotAt <= d.now && v.slotAt > d.now - 7 * DAY && fullyLive(v.id)).length;
   const items = attentionItems(d.videos, d.posts, d.connected, d.now);
   const writing = d.videos.filter((v) => v.uploadState === 'ready' && (v.seoState !== 'ready' || !!v.claudeWantedAt));
+  const connectedCount = PLATFORMS.filter((p) => d.connected[p]).length;
+  const steps = [
+    { icon: UserPlus, title: 'Connect your accounts', text: `${connectedCount} of ${PLATFORMS.length} connected. Posts go only to connected accounts.`, href: '/accounts', action: 'Connect', done: connectedCount === PLATFORMS.length },
+    { icon: UploadCloud, title: 'Add your first video', text: 'It takes the next free slot. You can move it in the planner.', href: '/upload', action: 'Add a video', done: d.videos.length > 0 },
+    { icon: Sparkles, title: 'Start the Claude helper', text: 'Run npm run claude-helper on your laptop so Claude writes the SEO.', href: '/accounts', action: 'How to', done: d.setup.claude },
+    { icon: Link2, title: 'Add your channel links', text: 'They go at the end of every description.', href: '/settings', action: 'Add links', done: Object.values(d.settings.links).some((l) => !!l.trim()) },
+  ];
+  const stepsDone = steps.filter((x) => x.done).length;
 
   return (
     <>
@@ -58,9 +67,10 @@ export default async function TodayPage() {
               Nothing in the next 7 days. <Link href="/upload">Add a video</Link> and it takes the next free slot.
             </div>
           )}
+          <div className="days">
           {days.map((g) => (
-            <div key={g.day} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <h3 className="label day-h">{g.label}</h3>
+            <div key={g.day} className="day">
+              <h3 className="label day-h">{g.label}<span className="n">{g.rows.some((r) => r.kind === 'free') ? `${g.rows.filter((r) => r.kind === 'free').length} free` : 'Full'}</span></h3>
               {g.rows.map((r) => {
                 const [hm, ap] = formatTime(r.at).split(' ');
                 if (r.kind === 'free') {
@@ -94,7 +104,31 @@ export default async function TodayPage() {
               })}
             </div>
           ))}
+          </div>
           {free7.length > 0 && days.length > 0 && <p className="small muted">See every free slot in the <Link href="/calendar">planner</Link>.</p>}
+
+          {stepsDone < steps.length && (
+            <section className="start" aria-labelledby="start">
+              <div className="panel-h">
+                <h2 id="start" style={{ fontSize: 22, fontWeight: 800 }}>Get set up</h2>
+                <span className="start-meter small muted">
+                  <span className="meter" aria-hidden="true"><span style={{ width: `${(stepsDone / steps.length) * 100}%` }} /></span>
+                  {stepsDone} of {steps.length} done
+                </span>
+              </div>
+              <ol className="start-grid">
+                {steps.map(({ icon: StepIcon, ...x }, i) => (
+                  <li key={x.title} className={x.done ? 'done' : ''}>
+                    <span className="start-icon">{x.done ? <Check size={18} aria-hidden /> : <StepIcon size={18} aria-hidden />}</span>
+                    <span className="start-n mono">{x.done ? 'Done' : `Step ${i + 1}`}</span>
+                    <h3>{x.title}</h3>
+                    <p className="small muted">{x.text}</p>
+                    {!x.done && <Link className="btn sm" href={x.href}>{x.action}</Link>}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
         </section>
 
         <aside className="side">
