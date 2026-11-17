@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>
+  @media (max-width: 480px) {
+    .outer { padding: 24px 10px !important; }
+    .pad { padding-left: 22px !important; padding-right: 22px !important; }
+    .h1 { font-size: 23px !important; }
+  }
+</style>
+<title>Confirm your email</title>
+</head>
+<!-- Reach Studio email: paste into Supabase → Authentication → Emails → Templates → Confirm signup.
+     Subject: Confirm your email for Reach Studio -->
+<body style="margin:0;padding:0;background:#EEF1F7;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#EEF1F7;">One click to finish creating your Reach Studio account.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EEF1F7;">
+  <tr>
+    <td class="outer" align="center" style="padding:40px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+        <!-- brand -->
+        <tr>
+          <td style="padding:0 4px 18px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="34" height="34" align="center" valign="middle" style="width:34px;height:34px;background:#F2A922;border-radius:10px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:17px;font-weight:800;color:#141B33;">R</td>
+                <td style="padding-left:10px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:17px;font-weight:800;color:#141B33;">Reach Studio</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- card -->
+        <tr>
+          <td style="background:#FFFFFF;border:1px solid #D3D9E8;border-radius:18px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="height:6px;line-height:6px;font-size:0;background:#F2A922;">&nbsp;</td></tr>
+              <tr>
+                <td class="pad" style="padding:34px 36px 8px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+                  <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#8A5300;">Almost there</p>
+                  <h1 class="h1" style="margin:0 0 14px;font-size:26px;line-height:1.2;font-weight:800;color:#141B33;">Confirm your email</h1>
+                  <p style="margin:0 0 26px;font-size:16px;line-height:1.6;color:#3A4466;">You created a Reach Studio account for <strong style="color:#141B33;">{{ .Email }}</strong>. Press the button to confirm this address, and the studio opens.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:0 36px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#F2A922" style="border-radius:12px;">
+                        <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/&amp;kind=signup" target="_blank" style="display:inline-block;padding:15px 30px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:16px;font-weight:800;color:#141B33;text-decoration:none;border-radius:12px;">Confirm email &rarr;</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:26px 36px 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F7F8FC;border:1px solid #E3E7F1;border-radius:12px;">
+                    <tr>
+                      <td style="padding:14px 16px;font-size:14px;line-height:1.6;color:#59627F;">
+                        &#9201;&nbsp; The link works once and expires after 1 hour.<br>&#128274;&nbsp; After this you sign in with your email and password.
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:22px 36px 32px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#8E97B3;">
+                  Button not working? Copy this link into your browser:<br>
+                  <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/&amp;kind=signup" style="color:#1F49C7;word-break:break-all;">{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/&amp;kind=signup</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- footer -->
+        <tr>
+          <td style="padding:20px 8px 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#8E97B3;text-align:center;">
+            Did not create an account? Ignore this email; nothing happens without the click.<br>
+            Reach Studio &middot; <a href="{{ .SiteURL }}" style="color:#8E97B3;">{{ .SiteURL }}</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

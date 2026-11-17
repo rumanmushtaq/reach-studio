@@ -122,12 +122,17 @@ Sign-in uses the same Supabase project.
    you add or change them on Vercel, **redeploy**.
 2. **Authentication → URL Configuration**: set **Site URL** to your Vercel address, e.g.
    `https://reach-studio-five.vercel.app`. Under **Redirect URLs** add
-   `https://reach-studio-five.vercel.app/auth/callback` and `http://localhost:3100/auth/callback`
-   (use your own address if it differs).
+   `https://reach-studio-five.vercel.app/**` and `http://localhost:3000/**` (use your own address if it
+   differs). Without this, email links open the Site URL (by default `http://localhost:3000`) instead
+   of the studio.
 3. Emails: Supabase's built-in email only sends to members of your Supabase team, and it has a low limit
    per hour. To email any address, add your own SMTP under **Authentication → Emails → SMTP**, for
    example Resend.
-4. Optional: after you create your account, turn off **Allow new users to sign up**
+4. Email design: **Authentication → Emails → Templates**. Paste `supabase/templates/confirm-signup.html`
+   into **Confirm signup** and `supabase/templates/reset-password.html` into **Reset password**; the
+   subject line is in a comment at the top of each file. Their links use a token, so they work in any
+   browser, not only the one that asked for the email.
+5. Optional: after you create your account, turn off **Allow new users to sign up**
    (*Authentication → Sign In / Providers*). The studio already refuses any account that is not the owner.
 
 `STUDIO_SECRET` only encrypts the platform tokens now; it is not used for sign-in. `CRON_SECRET` is still

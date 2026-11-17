@@ -10,6 +10,14 @@ const SIGN_IN = [/^\/login$/, /^\/register$/, /^\/auth\//];
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (MACHINE.some((re) => re.test(pathname))) return NextResponse.next();
+  // An email link whose address is not on Supabase's Redirect URLs list lands on the Site URL instead:
+  // hand it to the callback so the link still works.
+  const q = req.nextUrl.searchParams;
+  if (!pathname.startsWith('/auth/') && (q.has('code') || q.has('token_hash') || q.has('error_code'))) {
+    const to = new URL('/auth/callback', req.url);
+    to.search = req.nextUrl.search;
+    return NextResponse.redirect(to);
+  }
 
   const cfg = supabaseConfig();
   if (!cfg) return SIGN_IN.some((re) => re.test(pathname)) ? NextResponse.next() : toLogin(req, 'not-set-up');
