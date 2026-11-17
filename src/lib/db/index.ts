@@ -2,8 +2,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
+import type { drizzle as drizzlePgliteType } from 'drizzle-orm/pglite';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../env';
@@ -13,7 +12,7 @@ import * as schema from './schema';
 // Production: Supabase Postgres (SUPABASE_DATABASE_URL, the transaction pooler on port 6543). Local dev and tests:
 // PGlite, an embedded Postgres in a folder. Writes that race use conditional UPDATEs, not transactions.
 
-type Db = ReturnType<typeof drizzlePglite<typeof schema>>;
+type Db = ReturnType<typeof drizzlePgliteType<typeof schema>>;
 
 let ready: Promise<Db> | null = null;
 
@@ -27,6 +26,9 @@ async function open(): Promise<Db> {
     return drizzlePostgres(sql, { schema }) as unknown as Db;
   }
   if (url !== 'memory://') await mkdir(path.dirname(path.resolve(url)), { recursive: true });
+  // Loaded only here: PGlite is several MB of WebAssembly that production never needs, and a static
+  // import would load it on every cold start.
+  const [{ PGlite }, { drizzle: drizzlePglite }] = await Promise.all([import('@electric-sql/pglite'), import('drizzle-orm/pglite')]);
   const client = new PGlite(url === 'memory://' ? undefined : url);
   await client.exec(BOOTSTRAP_SQL);
   return drizzlePglite(client, { schema });
