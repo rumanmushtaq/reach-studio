@@ -2,12 +2,12 @@ import 'server-only';
 import { and, asc, eq, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { newId } from './crypto';
 import { db, schema } from './db';
-import type { PostRow, SettingsRow, UserRow, VideoRow } from './db/schema';
+import type { PostRow, SettingsRow, ProfileRow, VideoRow } from './db/schema';
 import { firstRunAt, postsToReset } from './plan';
 import type { Platform, Seo } from './seo';
 import { canBook, freeSlots, normaliseTimes } from './slots';
 
-const { settings, videos, posts, accounts, users } = schema;
+const { settings, videos, posts, accounts, profiles } = schema;
 
 const DEFAULT_SETTINGS: SettingsRow = {
   id: 1, times: ['19:00'], channel: '', niche: 'Kids cartoons in Urdu and English',
@@ -161,25 +161,17 @@ export async function saveSeo(id: string, seo: Seo, source: 'claude' | 'draft', 
   await updateVideo(id, { seo, seoSource: source, seoNote: note, seoState: 'ready', seoAt: Date.now() });
 }
 
-// ---------- users ----------
+// ---------- profile ----------
 
-export async function countUsers(): Promise<number> {
-  return (await (await db()).select({ n: sql<number>`count(*)::int` }).from(users))[0]?.n ?? 0;
+export async function getProfile(id: string): Promise<ProfileRow | undefined> {
+  return (await (await db()).select().from(profiles).where(eq(profiles.id, id)))[0];
 }
 
-export async function getUserByEmail(email: string): Promise<UserRow | undefined> {
-  return (await (await db()).select().from(users).where(eq(users.email, email.toLowerCase())))[0];
-}
-
-/** Adds the first user only: false when someone already set up the studio. */
-export async function insertFirstUser(row: UserRow): Promise<boolean> {
-  if ((await countUsers()) > 0) return false;
-  await (await db()).insert(users).values(row).onConflictDoNothing();
-  return (await countUsers()) === 1 && !!(await getUserByEmail(row.email));
-}
-
-export async function updateUser(id: string, patch: Partial<UserRow>): Promise<void> {
-  await (await db()).update(users).set(patch).where(eq(users.id, id));
+/** Creates the profile, or updates its name and email. `signedIn` also records the sign-in time. */
+export async function saveProfile(p: { id: string; name: string; email: string }, now: number, signedIn = false): Promise<void> {
+  await (await db()).insert(profiles)
+    .values({ ...p, createdAt: now, updatedAt: now, lastSignInAt: signedIn ? now : null })
+    .onConflictDoUpdate({ target: profiles.id, set: { name: p.name, email: p.email, updatedAt: now, ...(signedIn ? { lastSignInAt: now } : {}) } });
 }
 
 // ---------- Claude helper (runs on the owner's laptop, signed in to Claude) ----------

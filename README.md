@@ -5,8 +5,8 @@ the video to YouTube, Facebook, Instagram and TikTok at that time. Posting works
 Claude researches the market and writes the SEO through your own Claude account while the helper runs on
 your laptop.
 
-You sign in with an email and password. The first time, the sign-in page asks you to create the account;
-no password goes in the settings files.
+You sign in with an email and password, handled by Supabase Auth. The first time, the sign-in page asks
+you to create the account; no password goes in the settings files.
 
 ## How it works
 
@@ -40,7 +40,7 @@ Behind the screens:
 5. The day after a video is live on every chosen platform, its video file is deleted. Its SEO, links and
    thumbnail stay.
 
-The job runner is `/api/cron/tick`. Something must call it every 15 minutes (step 7).
+The job runner is `/api/cron/tick`. Something must call it every 15 minutes (step 8).
 
 ## Run it on your laptop
 
@@ -51,8 +51,11 @@ cp .env.example .env.local
 ```
 
 Fill in `STUDIO_SECRET`, `CRON_SECRET` and `APP_URL=http://localhost:3100`.
-Leave the database and storage lines empty: locally the studio uses `./data`. Open the studio and create
-your account on the sign-in page (on your laptop it does not ask for the setup code).
+Sign-in needs a Supabase project, even on your laptop: set up the database and sign-in in steps 1 and 2
+below, and put `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
+`SUPABASE_DATABASE_URL` in `.env.local`. Leave the storage line empty: locally the studio keeps video files
+in `./data`. Open the studio and create your account on the sign-in page (on your laptop it does not ask
+for the setup code).
 
 ```bash
 npm install
@@ -71,11 +74,25 @@ Tests:
 npm test
 ```
 
+The browser tests run against a small local Supabase Auth, not your real project. Start it (needs Docker):
+
 ```bash
-npx playwright test
+docker compose -f e2e/supabase/compose.yml up -d
 ```
 
-(The second one needs `npm run dev` running.)
+Start the studio with the test settings:
+
+```bash
+set -a; . e2e/supabase/test.env; set +a; npx next dev -p 3100
+```
+
+In another window, run Playwright with the same settings:
+
+```bash
+set -a; . e2e/supabase/test.env; set +a; npx playwright test
+```
+
+The test emails show at http://localhost:54324 (Mailpit).
 
 ## Deploy on Vercel (free Hobby plan)
 
@@ -90,10 +107,36 @@ Vercel's Hobby plan is for personal, non-commercial use. When the channel earns 
    `SUPABASE_DATABASE_URL`.
 
 Use the transaction pooler, not the direct connection: Vercel opens many short connections and the
-pooler handles them. The tables are created on first use. Free Supabase projects pause after a week
-with no activity; the job runner calling the studio every 15 minutes keeps it awake.
+pooler handles them. The tables are created on first use. The studio also reads and updates Supabase's own
+`auth.users` table through this connection: that is where it marks which account owns the studio (the
+`studio_owner` flag). Free Supabase projects pause after a week with no activity; the job runner calling
+the studio every 15 minutes keeps it awake.
 
-### 2. Video storage: Cloudinary
+### 2. Sign-in: Supabase Auth
+
+Sign-in uses the same Supabase project.
+
+1. Open the project → **Connect**. Copy the project URL (`https://<ref>.supabase.co`) into
+   `NEXT_PUBLIC_SUPABASE_URL` and the **publishable key** into `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+   The publishable key is public, not a secret. `NEXT_PUBLIC_` values are built into the app, so after
+   you add or change them on Vercel, **redeploy**.
+2. **Authentication → URL Configuration**: set **Site URL** to your Vercel address, e.g.
+   `https://reach-studio-five.vercel.app`. Under **Redirect URLs** add
+   `https://reach-studio-five.vercel.app/auth/callback` and `http://localhost:3100/auth/callback`
+   (use your own address if it differs).
+3. Emails: Supabase's built-in email only sends to members of your Supabase team, and it has a low limit
+   per hour. To email any address, add your own SMTP under **Authentication → Emails → SMTP**, for
+   example Resend.
+4. Optional: after you create your account, turn off **Allow new users to sign up**
+   (*Authentication → Sign In / Providers*). The studio already refuses any account that is not the owner.
+
+`STUDIO_SECRET` only encrypts the platform tokens now; it is not used for sign-in. `CRON_SECRET` is still
+the **setup code** for creating the first account in production.
+
+If you used an older version of the studio that kept its own `users` table, that table is no longer used.
+You can drop it.
+
+### 3. Video storage: Cloudinary
 
 1. Sign up at cloudinary.com (free plan, no card needed).
 2. Dashboard → **API Keys** (or *Settings → API Keys*) → copy the **API environment variable**
@@ -104,7 +147,7 @@ The free plan takes **videos up to 100 MB** and gives 25 credits a month (1 cred
 stored under random names and deleted the day after they are live everywhere.
 
 
-### 3. Claude (your Claude account, no API key)
+### 4. Claude (your Claude account, no API key)
 
 Claude writes the SEO through **Claude Code** on your laptop, signed in with your Claude account
 (Pro or Max), so its use counts toward your plan and there is no API key or bill.
@@ -121,7 +164,7 @@ npm run claude-helper
 It checks for new videos every minute. The **Accounts** page shows whether it is running. While it is
 off, videos still post on time with the basic SEO draft.
 
-### 4. YouTube
+### 5. YouTube
 
 1. console.cloud.google.com → new project → enable **YouTube Data API v3**.
 2. **OAuth consent screen**: External. Add your Google account as a test user.
@@ -133,7 +176,7 @@ off, videos still post on time with the basic SEO draft.
 
 Cartoons are uploaded as **made for kids**, as YouTube requires. That turns comments off on them.
 
-### 5. Facebook and Instagram
+### 6. Facebook and Instagram
 
 1. developers.facebook.com → **Create app** → type *Business*.
 2. Add **Facebook Login for Business**. Redirect URI:
@@ -143,18 +186,19 @@ Cartoons are uploaded as **made for kids**, as YouTube requires. That turns comm
 
 While the app is in development mode it can post to Pages you manage, which covers your own channel.
 
-### 6. TikTok
+### 7. TikTok
 
 Sign up at upload-post.com, connect your TikTok there, and create an API key. In the studio, go to
 **Accounts → TikTok** and enter the key and the profile name you gave it on Upload-Post.
 
-### 7. Deploy and start the job runner
+### 8. Deploy and start the job runner
 
 1. Push this folder to GitHub and import it in Vercel.
 2. Add all the environment variables from `.env.example` (`APP_URL` = your Vercel address).
 3. Deploy and open the app. The sign-in page asks you to **create your account**: your name, email, a
    password, and the **setup code**, which is your `CRON_SECRET`. The setup code stops a stranger from
-   creating the account first. After that the page is a normal sign-in.
+   creating the account first. Supabase then emails a confirmation link: open it and the studio opens on
+   Today. After that the page is a normal sign-in.
 4. Connect the accounts on the **Accounts** page.
 5. Call the job runner every 15 minutes. Free option: **cron-job.org** → new cron job →
    URL `https://YOUR-APP.vercel.app/api/cron/tick` → every 15 minutes →
@@ -173,6 +217,12 @@ can call it too: set the repository secrets `STUDIO_URL` and `CRON_SECRET`.
 - Claude rewrites the SEO only while the helper runs on your laptop. A video that starts posting first
   keeps the basic draft.
 - If you remove a video after it was uploaded early, delete it on YouTube or Facebook too.
-- Forgot your password? On the sign-in page press **Forgot password?** and use the setup code
-  (`CRON_SECRET`). Five wrong passwords in a row lock sign-in for 15 minutes. Change your password any
-  time in **Settings**.
+- Forgot your password? On the sign-in page press **Forgot password?**, type your email, and Supabase
+  emails you a reset link. Open it in the same browser you asked from. Choose a new password; every
+  device is signed out and you sign in again. You can change your password any time in **Settings**
+  (it asks for the current one).
+- Didn't get the confirmation email? Signing in shows **Confirm your email first** with a button to send
+  it again. Supabase sends one email per address every 60 seconds; the page counts down. A confirmation
+  link opened in another browser still confirms your email.
+- 2-step sign-in: in **Settings** turn it on, scan the QR code with an authenticator app and type the
+  6-digit code. From then on, after your password the studio asks for the code. Turn it off in the same place.

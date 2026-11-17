@@ -12,15 +12,15 @@ export const settings = pgTable('settings', {
   helperSeenAt: bigint('helper_seen_at', { mode: 'number' }), // last call from the Claude helper on the laptop
 });
 
-// People who can sign in to the studio. The first one is created on the sign-in page with the setup code.
-export const users = pgTable('users', {
+// The owner's profile. Sign-in itself (email, password, 2-step) lives in Supabase Auth; `id` is the
+// Supabase user id. Created when the email is verified, updated on each sign-in.
+export const profiles = pgTable('profiles', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(), // scrypt, see password.ts
-  failedLogins: integer('failed_logins').notNull().default(0),
-  lockedUntil: bigint('locked_until', { mode: 'number' }),
+  email: text('email').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+  lastSignInAt: bigint('last_sign_in_at', { mode: 'number' }),
 });
 
 export const accounts = pgTable('accounts', {
@@ -87,16 +87,16 @@ export type VideoRow = typeof videos.$inferSelect;
 export type PostRow = typeof posts.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type SettingsRow = typeof settings.$inferSelect;
-export type UserRow = typeof users.$inferSelect;
+export type ProfileRow = typeof profiles.$inferSelect;
 
 // Created on first use (single-owner app, no migration tool needed). Keep in step with the tables above.
 export const BOOTSTRAP_SQL = `
 CREATE TABLE IF NOT EXISTS settings (
   id integer PRIMARY KEY, times jsonb NOT NULL, channel text NOT NULL, niche text NOT NULL, links jsonb NOT NULL
 );
-CREATE TABLE IF NOT EXISTS users (
-  id text PRIMARY KEY, name text NOT NULL, email text NOT NULL UNIQUE, password_hash text NOT NULL,
-  failed_logins integer NOT NULL DEFAULT 0, locked_until bigint, created_at bigint NOT NULL
+CREATE TABLE IF NOT EXISTS profiles (
+  id text PRIMARY KEY, name text NOT NULL, email text NOT NULL, created_at bigint NOT NULL, updated_at bigint NOT NULL,
+  last_sign_in_at bigint
 );
 CREATE TABLE IF NOT EXISTS accounts (
   platform text PRIMARY KEY, external_id text NOT NULL, name text NOT NULL, tokens text NOT NULL, connected_at bigint NOT NULL

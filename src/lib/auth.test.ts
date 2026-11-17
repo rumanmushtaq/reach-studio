@@ -1,26 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { changePasswordSchema, channelSchema, loginSchema, setupSchema } from './forms';
-import { hashPassword, verifyPassword } from './password';
-
-describe('passwords', () => {
-  it('hashes with a fresh salt and checks only the right password', async () => {
-    const a = await hashPassword('cartoon-time-42');
-    const b = await hashPassword('cartoon-time-42');
-    expect(a).toMatch(/^scrypt\$16384\$8\$1\$/);
-    expect(a).not.toBe(b);
-    expect(await verifyPassword('cartoon-time-42', a)).toBe(true);
-    expect(await verifyPassword('cartoon-time-43', a)).toBe(false);
-    expect(await verifyPassword('anything', 'not-a-hash')).toBe(false);
-  });
-});
+import { changePasswordSchema, channelSchema, forgotSchema, loginSchema, mfaCodeSchema, newPasswordSchema, setupSchema } from './forms';
+import { isOwner } from './supabase/config';
 
 describe('form rules', () => {
   const errors = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
     Object.fromEntries((r.error?.issues ?? []).map((i) => [i.path.join('.'), i.message]));
 
   it('cleans the email and needs a password to sign in', () => {
-    expect(loginSchema.parse({ email: '  Me@Gmail.com ', password: 'x', remember: true }).email).toBe('me@gmail.com');
-    expect(errors(loginSchema.safeParse({ email: 'nope', password: '', remember: false }))).toEqual({
+    expect(loginSchema.parse({ email: '  Me@Gmail.com ', password: 'x' }).email).toBe('me@gmail.com');
+    expect(errors(loginSchema.safeParse({ email: 'nope', password: '' }))).toEqual({
       email: 'Enter a valid email, like you@gmail.com', password: 'Enter your password',
     });
   });
@@ -38,10 +26,29 @@ describe('form rules', () => {
       .toBe('Choose a password you have not used here');
   });
 
+  it('asks only for an email to reset the password, then a new password typed twice', () => {
+    expect(forgotSchema.parse({ email: ' Me@Gmail.com' })).toEqual({ email: 'me@gmail.com' });
+    expect(forgotSchema.safeParse({ email: '' }).error?.issues[0].message).toBe('Enter your email');
+    expect(errors(newPasswordSchema.safeParse({ password: 'cartoon-time-42', confirm: 'cartoon-time-4' })).confirm).toBe('The passwords do not match');
+  });
+
+  it('takes a 6-digit 2-step code', () => {
+    expect(mfaCodeSchema.parse({ code: ' 123456 ' }).code).toBe('123456');
+    expect(errors(mfaCodeSchema.safeParse({ code: '12345' })).code).toBe('Type the 6-digit code from your authenticator app');
+  });
+
   it('accepts empty links but not half links', () => {
     const links = { youtube: '', facebook: 'https://facebook.com/leo', instagram: '', tiktok: '' };
     expect(channelSchema.safeParse({ channel: 'Leo', niche: '', links }).success).toBe(true);
     expect(errors(channelSchema.safeParse({ channel: 'Leo', niche: '', links: { ...links, youtube: 'youtube' } }))['links.youtube'])
       .toBe('Paste the full link, starting with https://');
+  });
+});
+
+describe('studio owner', () => {
+  it('trusts only the owner flag the studio sets in app_metadata', () => {
+    expect(isOwner({ sub: 'u1', app_metadata: { studio_owner: true } })).toBe(true);
+    expect(isOwner({ sub: 'u1', app_metadata: {}, user_metadata: { studio_owner: true } })).toBe(false);
+    expect(isOwner(null)).toBe(false);
   });
 });

@@ -15,7 +15,6 @@ const confirmError = { message: 'The passwords do not match', path: ['confirm'] 
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, 'Enter your password'),
-  remember: z.boolean(),
 });
 export type LoginForm = z.infer<typeof loginSchema>;
 
@@ -28,13 +27,19 @@ export const setupSchema = z.object({
 }).refine(sameAs, confirmError);
 export type SetupForm = z.infer<typeof setupSchema>;
 
-export const resetSchema = z.object({
-  email,
-  code: z.string().trim().min(1, 'Enter the setup code'),
+export const forgotSchema = z.object({ email });
+export type ForgotForm = z.infer<typeof forgotSchema>;
+
+export const mfaCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, 'Type the 6-digit code from your authenticator app'),
+});
+export type MfaCodeForm = z.infer<typeof mfaCodeSchema>;
+
+export const newPasswordSchema = z.object({
   password: newPassword,
   confirm: z.string(),
 }).refine(sameAs, confirmError);
-export type ResetForm = z.infer<typeof resetSchema>;
+export type NewPasswordForm = z.infer<typeof newPasswordSchema>;
 
 export const changePasswordSchema = z.object({
   current: z.string().min(1, 'Enter your current password'),
@@ -69,8 +74,11 @@ export const videoInfoSchema = z.object({
 });
 export type VideoInfoForm = z.infer<typeof videoInfoSchema>;
 
-/** What a form's server action returns: field errors go next to their fields, `error` above the form. */
-export type FormResult = { ok: true; message?: string } | { ok: false; error?: string; fields?: Record<string, string> };
+/** What a form's server action returns: field errors go next to their fields, `error` above the form.
+ *  `code` lets the page offer a next step, e.g. "send the confirmation email again". */
+export type FormResult =
+  | { ok: true; message?: string; code?: string }
+  | { ok: false; error?: string; fields?: Record<string, string>; code?: string };
 
 /** Field errors from a failed server check, keyed by field path, for react-hook-form's setError. */
 export function fieldErrors(error: z.ZodError): Record<string, string> {

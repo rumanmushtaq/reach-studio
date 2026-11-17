@@ -13,9 +13,10 @@ import { PLATFORM_NAMES, PLATFORMS, type Links } from '@/lib/seo';
 import { QUARTER_HOURS, timeLabel } from '@/lib/slots';
 import { applyResult, Field, FormError, TextInput } from './forms';
 import { useAction } from './query';
+import { TwoStepCard } from './TwoStepCard';
 import { PlatformBadge, useToast } from './ui';
 
-export function SettingsView({ times, channel, niche, links, email }: { times: string[]; channel: string; niche: string; links: Links; email: string | null }) {
+export function SettingsView({ times, channel, niche, links, email, twoStepOn }: { times: string[]; channel: string; niche: string; links: Links; email: string | null; twoStepOn: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const { run, pending } = useAction('Saved');
@@ -37,7 +38,7 @@ export function SettingsView({ times, channel, niche, links, email }: { times: s
   });
   const submitPassword = pwForm.handleSubmit(async (v) => {
     const r = await changePasswordCall.mutateAsync(v);
-    if (applyResult(pwForm, r)) { toast('Password changed'); pwForm.reset(); }
+    if (applyResult(pwForm, r)) { toast(r.ok && r.message ? r.message : 'Password changed'); pwForm.reset(); }
   });
 
   const ce = chanForm.formState.errors;
@@ -93,7 +94,7 @@ export function SettingsView({ times, channel, niche, links, email }: { times: s
 
       <form className="card" onSubmit={submitPassword} aria-labelledby="pw" noValidate>
         <h2 id="pw">Sign-in</h2>
-        <p className="small muted">{email ? <>Signed in as <b>{email}</b>. </> : null}Change your password here. Forgot it? The sign-in page resets it with your setup code.</p>
+        <p className="small muted">{email ? <>Signed in as <b>{email}</b>. </> : null}Change your password here. Forgot it? Use “Forgot password?” on the sign-in page and we email you a link.</p>
         <FormError message={pe.root?.message} />
         <input type="email" autoComplete="username" value={email ?? ''} readOnly hidden />
         <div className="grid2">
@@ -104,6 +105,8 @@ export function SettingsView({ times, channel, niche, links, email }: { times: s
         </div>
         <div className="inline"><button className="btn" disabled={pwForm.formState.isSubmitting}>{pwForm.formState.isSubmitting ? 'Saving…' : 'Change password'}</button></div>
       </form>
+
+      <TwoStepCard on={twoStepOn} />
     </>
   );
 }
