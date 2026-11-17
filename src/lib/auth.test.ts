@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changePasswordSchema, channelSchema, forgotSchema, loginSchema, mfaCodeSchema, newPasswordSchema, setupSchema } from './forms';
-import { isOwner } from './supabase/config';
+import { isOwner, supabaseConfig } from './supabase/config';
 
 describe('form rules', () => {
   const errors = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
@@ -50,5 +50,21 @@ describe('studio owner', () => {
     expect(isOwner({ sub: 'u1', app_metadata: { studio_owner: true } })).toBe(true);
     expect(isOwner({ sub: 'u1', app_metadata: {}, user_metadata: { studio_owner: true } })).toBe(false);
     expect(isOwner(null)).toBe(false);
+  });
+});
+
+describe('Supabase settings', () => {
+  it('works out the project address from the pooler URL when only the key is set', () => {
+    const keep = { ...process.env };
+    try {
+      delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      process.env.SUPABASE_DATABASE_URL = 'postgresql://postgres.abcdefghijklmnopqrst:pw@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres';
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_x';
+      expect(supabaseConfig()).toEqual({ url: 'https://abcdefghijklmnopqrst.supabase.co', key: 'sb_publishable_x' });
+      delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+      expect(supabaseConfig()).toBeNull();
+    } finally {
+      process.env = keep;
+    }
   });
 });

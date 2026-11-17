@@ -1,5 +1,5 @@
 import { SignInView, type Notice } from '@/components/SignInView';
-import { codePending, MISSING_CONFIG, supabaseConfig } from '@/lib/supabase/config';
+import { codePending, MISSING_CONFIG, supabaseConfig, supabaseSettingNames } from '@/lib/supabase/config';
 import { ownerExists } from '@/lib/supabase/owner';
 import { currentOwner } from '@/lib/supabase/server';
 
@@ -21,7 +21,10 @@ const REASONS: Record<string, Notice> = {
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ exists?: string; reason?: string }> }) {
   const q = await searchParams;
-  if (!supabaseConfig()) return <Problem text={MISSING_CONFIG} />;
+  if (!supabaseConfig()) {
+    const { seen, missing } = supabaseSettingNames();
+    return <Problem text={MISSING_CONFIG} detail={`Missing: ${missing.join(', ') || 'none'}. Supabase settings this deployment can see: ${seen.join(', ') || 'none'}. Check the names, and that "Production" is ticked for each.`} />;
+  }
   let firstRun: boolean;
   try {
     firstRun = !(await ownerExists());
@@ -37,7 +40,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return <SignInView key={`${q.reason ?? ''}${q.exists ?? ''}${startAt ?? ''}`} firstRun={firstRun} needsCode={process.env.NODE_ENV === 'production'} notice={firstRun ? undefined : notice} startAt={startAt} />;
 }
 
-function Problem({ text }: { text: string }) {
+function Problem({ text, detail }: { text: string; detail?: string }) {
   return (
     <main className="login">
       <div className="card auth-card">
@@ -46,6 +49,7 @@ function Problem({ text }: { text: string }) {
           <h1>Sign-in is not ready</h1>
         </div>
         <p className="banner bad" role="alert">{text}</p>
+        {detail && <p className="small mono">{detail}</p>}
         <p className="small muted">Fix the setting in Vercel (Settings → Environment Variables), then redeploy. The README lists every setting.</p>
       </div>
     </main>
