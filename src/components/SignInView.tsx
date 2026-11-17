@@ -116,9 +116,9 @@ function ResetFormView({ onDone, onBack }: { onDone: (message: string) => void; 
   );
 }
 
-export function SignInView({ firstRun, needsCode }: { firstRun: boolean; needsCode: boolean }) {
+export function SignInView({ firstRun, needsCode, notice: first }: { firstRun: boolean; needsCode: boolean; notice?: string }) {
   const [screen, setScreen] = useState<Screen>('signin'); // which form is shown, not form data
-  const [notice, setNotice] = useState<string>();
+  const [notice, setNotice] = useState(first);
   return (
     <main className="login">
       {firstRun ? <SetupFormView needsCode={needsCode} />

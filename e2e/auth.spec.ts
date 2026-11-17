@@ -3,7 +3,7 @@ import { OWNER, signIn } from './sign-in';
 
 const SETUP_CODE = process.env.CRON_SECRET ?? 'local-cron-secret';
 
-test('create the account, sign out, wrong password, reset with the setup code, change password', async ({ page }) => {
+test('create the account, sign out, wrong password, reset with the setup code, change password', async ({ page, browser }) => {
   // Fresh studio: the sign-in page asks to create the account, and checks the form before sending it.
   await page.goto('/login');
   await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible();
@@ -12,7 +12,23 @@ test('create the account, sign out, wrong password, reset with the setup code, c
   await expect(page.getByText('Enter your name')).toBeVisible();
   await expect(page.getByText('Use at least 10 characters')).toBeVisible();
   await expect(page.locator('#password')).toHaveAttribute('aria-invalid', 'true');
+  // Another browser opens the create form before the account exists.
+  const other = await browser.newContext();
+  const stale = await other.newPage();
+  await stale.goto('/login');
+  await expect(stale.getByRole('button', { name: 'Create account' })).toBeVisible();
   await signIn(page);
+
+  // The stale form, sent after the account exists, lands on sign-in instead of an error.
+  await stale.locator('#name').fill('Someone Else');
+  await stale.locator('#email').fill('else@reach.test');
+  await stale.locator('#password').fill('another-pass-42');
+  await stale.locator('#confirm').fill('another-pass-42');
+  if (await stale.locator('#code').count()) await stale.locator('#code').fill(SETUP_CODE);
+  await stale.getByRole('button', { name: 'Create account' }).click();
+  await expect(stale.getByText('Your account already exists. Sign in with it.')).toBeVisible();
+  await expect(stale.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await other.close();
 
   // Sign out: now it is a normal sign-in page.
   await page.getByRole('button', { name: 'Sign out' }).first().click();

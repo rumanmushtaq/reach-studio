@@ -65,7 +65,8 @@ export async function createOwner(input: SetupForm): Promise<FormResult> {
   const created = await repo.insertFirstUser({
     id: newId(), name, email, passwordHash: await hashPassword(password), failedLogins: 0, lockedUntil: null, createdAt: Date.now(),
   });
-  if (!created) return { ok: false, error: 'The studio already has an account. Sign in instead.' };
+  // An open tab can still show this form after the account was made: send it to sign-in instead.
+  if (!created) redirect('/login?exists=1');
   await startSession(email, true);
   redirect('/');
 }
