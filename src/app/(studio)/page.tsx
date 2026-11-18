@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AttentionBox } from '@/components/Attention';
 import { Countdown, Icon, PlatformBadge, Thumb } from '@/components/ui';
 import { attentionItems } from '@/lib/attention';
+import { dueWork } from '@/lib/kick';
 import { platformChips, scheduleDays, weekFill } from '@/lib/schedule';
 import { PLATFORM_NAMES, PLATFORMS } from '@/lib/seo';
 import { DAY, formatTime, freeSlots, TIME_ZONE, timeLabel } from '@/lib/slots';
@@ -30,6 +31,7 @@ export default async function TodayPage() {
   const booked7 = upcoming.filter((v) => v.slotAt! < d.now + 7 * DAY).length;
   const posted7 = d.videos.filter((v) => v.slotAt && v.slotAt <= d.now && v.slotAt > d.now - 7 * DAY && fullyLive(v.id)).length;
   const items = attentionItems(d.videos, d.posts, d.connected, d.now);
+  const late = dueWork(d).late;
   const writing = d.videos.filter((v) => v.uploadState === 'ready' && (v.seoState !== 'ready' || !!v.claudeWantedAt));
   const connectedCount = PLATFORMS.filter((p) => d.connected[p]).length;
   const steps = [
@@ -48,12 +50,18 @@ export default async function TodayPage() {
           <h1>{next ? <>Next post goes live <Countdown to={next.slotAt!} now={d.now} /></> : d.videos.length ? 'Nothing booked yet' : 'Welcome to Reach Studio'}</h1>
         </div>
         <div className="actions">
-          <Link className="btn" href="/calendar" prefetch>Open planner</Link>
-          <Link className="btn primary" href="/upload" prefetch><Icon name="plus" size={18} stroke={2.4} />Add videos</Link>
+          <Link className="btn" href="/calendar">Open planner</Link>
+          <Link className="btn primary" href="/upload"><Icon name="plus" size={18} stroke={2.4} />Add videos</Link>
         </div>
       </header>
 
       <AttentionBox items={items} />
+      {late.length > 0 && (
+        <div className="banner warn">
+          <span><b>{late.length} post{late.length > 1 ? 's are' : ' is'} late.</b> The job runner that uploads and posts has not run on time. The studio is running it now; to keep it on time, set up the every-15-minutes call.</span>
+          <Link className="btn sm" href="/settings#jobs">How to set it up</Link>
+        </div>
+      )}
       {!d.setup.claude && writing.length > 0 && <div className="banner info">{writing.length} video{writing.length > 1 ? 's are' : ' is'} waiting for Claude. Run <code>npm run claude-helper</code> on your laptop; until then they use a basic SEO draft.</div>}
 
       <div className="cols">

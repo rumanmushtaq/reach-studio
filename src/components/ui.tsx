@@ -89,7 +89,7 @@ export function Rail({ info }: { info: NavInfo }) {
     <nav className="rail" aria-label="Pages">
       <div className="brand"><span className="logo">R</span>Reach Studio</div>
       {NAV.map((n) => (
-        <Link key={n.href} href={n.href} prefetch className={`nav ${active(n.href) ? 'on' : ''}`} aria-current={active(n.href) ? 'page' : undefined}>
+        <Link key={n.href} href={n.href} className={`nav ${active(n.href) ? 'on' : ''}`} aria-current={active(n.href) ? 'page' : undefined}>
           <Icon name={n.icon} />{n.label}
           {n.key === 'today' && info.attention > 0 && <span className="badge" aria-label={`${info.attention} need you`}>{info.attention}</span>}
           {n.key === 'library' && <span className="count">{info.videos}</span>}
@@ -109,7 +109,7 @@ export function Rail({ info }: { info: NavInfo }) {
 export function BottomBar({ info }: { info: NavInfo }) {
   const active = useActive();
   const tab = (n: (typeof NAV)[number]) => (
-    <Link key={n.href} href={n.href} prefetch className={`tab ${active(n.href) ? 'on' : ''}`} aria-current={active(n.href) ? 'page' : undefined}>
+    <Link key={n.href} href={n.href} className={`tab ${active(n.href) ? 'on' : ''}`} aria-current={active(n.href) ? 'page' : undefined}>
       <Icon name={n.icon} size={22} />{n.label}
       {n.key === 'today' && info.attention > 0 && <span className="badge">{info.attention}</span>}
     </Link>
@@ -117,7 +117,7 @@ export function BottomBar({ info }: { info: NavInfo }) {
   return (
     <nav className="bottombar" aria-label="Pages">
       {tab(NAV[0])}{tab(NAV[1])}
-      <Link href="/upload" prefetch className="fab" aria-label="Add videos"><Icon name="plus" size={28} stroke={2.6} /></Link>
+      <Link href="/upload" className="fab" aria-label="Add videos"><Icon name="plus" size={28} stroke={2.6} /></Link>
       {tab(NAV[2])}{tab(NAV[4])}
     </nav>
   );

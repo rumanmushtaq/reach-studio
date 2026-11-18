@@ -22,7 +22,7 @@ export function platformChips(v: V, posts: P[], connected: Record<Platform, stri
     if (post?.state === 'staged') return chip('ready', 'up');
     if (v.seoState !== 'ready') return chip('waits for SEO', '');
     if (post && post.runAt > now) return chip(`${p === 'tiktok' ? 'posts' : p === 'instagram' ? 'prepares' : 'uploads'} ${formatTime(post.runAt)}`, '');
-    return chip('waiting', '');
+    return chip(p === 'tiktok' ? 'posting is due' : 'upload is due', 'warn');
   });
 }
 

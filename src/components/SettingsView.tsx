@@ -14,10 +14,11 @@ import { QUARTER_HOURS, timeLabel } from '@/lib/slots';
 import { applyResult, Field, FormError, TextInput } from './forms';
 import { useAction } from './query';
 import { ClaudeCard } from './ClaudeCard';
+import { JobRunnerCard } from './JobRunnerCard';
 import { TwoStepCard } from './TwoStepCard';
 import { PlatformBadge, useToast } from './ui';
 
-export function SettingsView({ times, channel, niche, links, email, twoStepOn, helperSeenAt, now }: { times: string[]; channel: string; niche: string; links: Links; email: string | null; twoStepOn: boolean; helperSeenAt: number | null; now: number }) {
+export function SettingsView({ times, channel, niche, links, email, twoStepOn, helperSeenAt, now, latePosts }: { times: string[]; channel: string; niche: string; links: Links; email: string | null; twoStepOn: boolean; helperSeenAt: number | null; now: number; latePosts: number }) {
   const router = useRouter();
   const toast = useToast();
   const { run, pending } = useAction('Saved');
@@ -105,6 +106,7 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
       </div>
 
       <div className="stack">
+      <JobRunnerCard late={latePosts} />
       <ClaudeCard seenAt={helperSeenAt} now={now} />
 
       <form className="card" onSubmit={submitPassword} aria-labelledby="pw" noValidate>

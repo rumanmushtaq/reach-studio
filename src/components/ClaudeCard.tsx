@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 // Claude writes the SEO through Claude Code on the owner's laptop (their Claude plan, no API key).
 // This card says whether that helper is running and how to start it.
 
-function CopyLine({ text }: { text: string }) {
+export function CopyLine({ text }: { text: string }) {
   const [copied, setCopied] = useState(false); // feedback only
   const copy = async () => {
     try {

@@ -2,13 +2,17 @@ import { AutoRefresh, BottomBar, Rail, ToastProvider, type NavInfo } from '@/com
 import { attentionItems } from '@/lib/attention';
 import { videoStatus } from '@/lib/plan';
 import { PLATFORMS } from '@/lib/seo';
+import { kickJobs } from '@/lib/kick';
 import { freeStorageBytes } from '@/lib/storage';
 import { studioData } from '@/lib/view';
 
 export const dynamic = 'force-dynamic';
+// Room for the background job run that opening the studio can start (see kickJobs).
+export const maxDuration = 300;
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
   const d = await studioData();
+  kickJobs(d);
   const stored = d.videos.filter((v) => !v.fileDeletedAt).reduce((n, v) => n + v.fileSize, 0);
   const free = freeStorageBytes();
   const info: NavInfo = {

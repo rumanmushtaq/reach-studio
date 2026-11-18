@@ -35,6 +35,15 @@ export function VideoDetail(props: Props) {
   const { run, pending: acting } = useAction();
   const { move: moveVideo, pending: moving } = useMoveSlot();
   const pending = acting || moving;
+  const toast = useToast();
+  // Where to post: the ticks change at once and stay while the server saves; then the page reloads its data.
+  const toggle = useMutation({
+    mutationFn: (platforms: Record<Platform, boolean>) => setPlatforms(video.id, platforms),
+    onSuccess: (r) => toast(r.ok ? 'Saved' : r.error ?? 'Could not save'),
+    onError: (err) => toast(err instanceof Error ? err.message : 'Could not save'),
+    onSettled: () => router.refresh(),
+  });
+  const shownPlatforms = toggle.isPending && toggle.variables ? toggle.variables : video.platforms;
   const [tab, setTab] = useState<Platform>(PLATFORMS.find((p) => video.platforms[p]) ?? 'youtube');
   const status = videoStatus(video, posts, now);
   const anyLive = posts.some((p) => p.state === 'live');
@@ -104,7 +113,7 @@ export function VideoDetail(props: Props) {
             <h2 id="where" style={{ marginBottom: 8 }}>Where</h2>
             {PLATFORMS.map((p) => {
               const post = posts.find((x) => x.platform === p);
-              const on = video.platforms[p];
+              const on = shownPlatforms[p];
               return (
                 <div className="plat" key={p}>
                   <PlatformBadge p={p} />
@@ -120,8 +129,8 @@ export function VideoDetail(props: Props) {
                   </div>
                   <label>
                     <span className="sr-only">Post to {PLATFORM_NAMES[p]}</span>
-                    <input type="checkbox" checked={on} disabled={pending || post?.state === 'live'}
-                      onChange={(e) => run(() => setPlatforms(video.id, { ...video.platforms, [p]: e.target.checked }))} />
+                    <input type="checkbox" checked={on} disabled={pending || toggle.isPending || post?.state === 'live'}
+                      onChange={(e) => toggle.mutate({ ...shownPlatforms, [p]: e.target.checked })} />
                   </label>
                 </div>
               );
@@ -146,10 +155,15 @@ function platformLine(p: Platform, on: boolean, post: PostRow | undefined, slot:
   if (post?.state === 'scheduled') return `Uploaded. Goes public ${slot ? formatTime(slot) : ''}`;
   if (post?.state === 'staged') return `Prepared. Posts ${slot ? formatTime(slot) : ''}`;
   if (!slot) return 'Waits for the slot';
-  if (p === 'youtube' || p === 'facebook') return `Uploads ${formatSlot(slot - EARLY_UPLOAD)}, public ${formatTime(slot)}`;
-  if (p === 'instagram') return `Prepared ${formatTime(slot - IG_STAGE)}, posts ${formatTime(slot)}${duration && duration > 900 ? ' · over 15 min, Instagram may refuse' : ''}`;
-  return `Posts ${formatTime(slot)}`;
+  // The post's own run time, not the plan: a video added late uploads when it is added, not 6 hours early.
+  const runAt = post?.runAt ?? (p === 'youtube' || p === 'facebook' ? slot - EARLY_UPLOAD : p === 'instagram' ? slot - IG_STAGE : slot);
+  if (post && post.state === 'waiting' && runAt <= now()) return `${p === 'tiktok' ? 'Posting' : p === 'instagram' ? 'Preparing' : 'Uploading'} is due now · waiting for the job runner`;
+  if (p === 'youtube' || p === 'facebook') return `Uploads ${formatSlot(runAt)}, public ${formatTime(slot)}`;
+  if (p === 'instagram') return `Prepared ${formatSlot(runAt)}, posts ${formatTime(slot)}${duration && duration > 900 ? ' · over 15 min, Instagram may refuse' : ''}`;
+  return `Posts ${formatSlot(slot)}`;
 }
+
+const now = () => Date.now();
 
 function Mover({ free, taken, now, pending, onMove, video }: Props & { pending: boolean; onMove: (ms: number) => void }) {
   const [picking, setPicking] = useState(false); // whether the picker is open; the picked time lives in the form
