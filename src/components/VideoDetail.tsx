@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { Controller, useForm, useWatch, type Control } from 'react-hook-form';
 import {
   deleteVideo, removeCustomThumb, retry, rewriteSeo, saveSeo, saveVideoInfo, setCustomThumb, setPlatforms, thumbnailUploadUrl,
@@ -36,14 +36,17 @@ export function VideoDetail(props: Props) {
   const { move: moveVideo, pending: moving } = useMoveSlot();
   const pending = acting || moving;
   const toast = useToast();
-  // Where to post: the ticks change at once and stay while the server saves; then the page reloads its data.
+  // Where to post: the ticks change at once and stay until the page has the saved data, so they never
+  // flick back to the old value between the save and the reload.
+  const [reloading, startReload] = useTransition();
   const toggle = useMutation({
     mutationFn: (platforms: Record<Platform, boolean>) => setPlatforms(video.id, platforms),
     onSuccess: (r) => toast(r.ok ? 'Saved' : r.error ?? 'Could not save'),
     onError: (err) => toast(err instanceof Error ? err.message : 'Could not save'),
-    onSettled: () => router.refresh(),
+    onSettled: () => startReload(() => router.refresh()),
   });
-  const shownPlatforms = toggle.isPending && toggle.variables ? toggle.variables : video.platforms;
+  const saving = toggle.isPending || reloading;
+  const shownPlatforms = saving && toggle.variables && toggle.data?.ok !== false ? toggle.variables : video.platforms;
   const [tab, setTab] = useState<Platform>(PLATFORMS.find((p) => video.platforms[p]) ?? 'youtube');
   const status = videoStatus(video, posts, now);
   const anyLive = posts.some((p) => p.state === 'live');
@@ -120,16 +123,16 @@ export function VideoDetail(props: Props) {
                   <div style={{ minWidth: 0 }}>
                     <b>{PLATFORM_NAMES[p]}</b>
                     <div className="sub">{platformLine(p, on, post, video.slotAt, connected[p], video.shape, video.duration)}</div>
-                    {post?.lastError && on && <div className="err">{post.lastError}</div>}
+                    {post?.lastError && on && connected[p] && <div className="err">{post.lastError}</div>}
                     <div className="inline" style={{ marginTop: post?.url || post?.state === 'failed' ? 6 : 0 }}>
                       {post?.url && <a className="small" style={{ fontWeight: 700 }} href={post.url} target="_blank" rel="noreferrer">Open on {PLATFORM_NAMES[p]}</a>}
-                      {post?.state === 'failed' && on && <button className="btn sm dark" disabled={pending} onClick={() => run(() => retry(post.id))}>Retry</button>}
+                      {post?.state === 'failed' && on && connected[p] && <button className="btn sm dark" disabled={pending} onClick={() => run(() => retry(post.id))}>Retry</button>}
                       {!connected[p] && on && <Link className="small" style={{ fontWeight: 700 }} href="/accounts">Connect</Link>}
                     </div>
                   </div>
                   <label>
                     <span className="sr-only">Post to {PLATFORM_NAMES[p]}</span>
-                    <input type="checkbox" checked={on} disabled={pending || toggle.isPending || post?.state === 'live'}
+                    <input type="checkbox" checked={on} disabled={pending || saving || post?.state === 'live' || (on && post?.state === 'scheduled')}
                       onChange={(e) => toggle.mutate({ ...shownPlatforms, [p]: e.target.checked })} />
                   </label>
                 </div>
@@ -150,9 +153,10 @@ export function VideoDetail(props: Props) {
 function platformLine(p: Platform, on: boolean, post: PostRow | undefined, slot: number | null, connected: string | null, shape: string, duration: number | null): string {
   if (!on) return shape === 'horizontal' && (p === 'instagram' || p === 'tiktok') ? 'Off: long horizontal videos fit YouTube and Facebook best' : 'Off';
   if (post?.state === 'live') return 'Live';
+  // Posts for a platform that is not connected wait for it, so connecting it is all that is needed.
+  if (!connected) return slot && slot <= now() ? 'Not connected · connect it to post now, or untick it' : 'Not connected · posts once you connect it';
   if (post?.state === 'failed') return 'Failed';
-  if (!connected) return 'Not connected yet';
-  if (post?.state === 'scheduled') return `Uploaded. Goes public ${slot ? formatTime(slot) : ''}`;
+  if (post?.state === 'scheduled') return `Uploaded. Goes public ${slot ? formatTime(slot) : ''} · already on ${PLATFORM_NAMES[p]}, so it stays ticked`;
   if (post?.state === 'staged') return `Prepared. Posts ${slot ? formatTime(slot) : ''}`;
   if (!slot) return 'Waits for the slot';
   // The post's own run time, not the plan: a video added late uploads when it is added, not 6 hours early.

@@ -4,7 +4,7 @@ import { newId } from './crypto';
 import { db, schema } from './db';
 import type { PostRow, SettingsRow, ProfileRow, VideoRow } from './db/schema';
 import { firstRunAt, postsToReset } from './plan';
-import type { Platform, Seo } from './seo';
+import { PLATFORMS, type Platform, type Seo } from './seo';
 import { canBook, freeSlots, normaliseTimes } from './slots';
 
 const { settings, videos, posts, accounts, profiles } = schema;
@@ -115,10 +115,15 @@ export async function resetPosts(videoId: string): Promise<void> {
 }
 
 /** Posts whose time has come and that no other run holds. */
+/** Posts to run now. A platform that is not connected is skipped: its posts wait until it is connected. */
 export async function duePosts(now: number): Promise<PostRow[]> {
-  return (await db()).select().from(posts)
+  const d = await db();
+  const linked = (await d.select({ platform: accounts.platform }).from(accounts)).map((a) => a.platform);
+  if (!linked.length) return [];
+  return d.select().from(posts)
     .where(and(
       inArray(posts.state, ['waiting', 'staged', 'scheduled']),
+      inArray(posts.platform, linked),
       lte(posts.runAt, now),
       or(isNull(posts.lockedUntil), lt(posts.lockedUntil, now)),
     ))
@@ -202,9 +207,25 @@ export async function finishClaudeJob(id: string, patch: Partial<VideoRow>): Pro
   await updateVideo(id, { ...patch, claudeWantedAt: null, claudeClaimedAt: null });
 }
 
+/**
+ * Changes where a video posts. Only the platforms that changed are touched: a newly ticked one gets a
+ * fresh post, an unticked one loses its post, and every other post keeps its state, time and error.
+ */
 export async function setPlatforms(id: string, platforms: Record<Platform, boolean>): Promise<void> {
   await updateVideo(id, { platforms });
-  await resetPosts(id);
+  const video = await getVideo(id);
+  if (!video?.slotAt) return;
+  const d = await db();
+  const existing = await listPosts([id]);
+  const off = PLATFORMS.filter((p) => !platforms[p] && existing.some((x) => x.platform === p && x.state !== 'live'));
+  if (off.length) await d.delete(posts).where(and(eq(posts.videoId, id), inArray(posts.platform, off), ne(posts.state, 'live')));
+  const now = Date.now();
+  for (const platform of PLATFORMS.filter((p) => platforms[p] && !existing.some((x) => x.platform === p))) {
+    await d.insert(posts).values({
+      id: newId(), videoId: id, platform, state: 'waiting', runAt: firstRunAt(platform, video.slotAt, now),
+      attempts: 0, lastError: null, lockedUntil: null, externalId: null, url: null, updatedAt: now,
+    });
+  }
 }
 
 // ---------- accounts ----------
@@ -222,6 +243,10 @@ export async function saveAccount(row: typeof accounts.$inferInsert): Promise<vo
     target: accounts.platform,
     set: { externalId: row.externalId, name: row.name, tokens: row.tokens, connectedAt: row.connectedAt },
   });
+  // Posts that failed only because this platform was not connected go back in the queue.
+  await (await db()).update(posts)
+    .set({ state: 'waiting', attempts: 0, lastError: null, lockedUntil: null })
+    .where(and(eq(posts.platform, row.platform), eq(posts.state, 'failed'), isNull(posts.externalId), sql`${posts.lastError} LIKE '%is not connected%'`));
 }
 
 export async function updateAccountTokens(platform: Platform, tokens: string): Promise<void> {

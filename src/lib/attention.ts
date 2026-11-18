@@ -17,7 +17,8 @@ export function attentionItems(videos: V[], posts: P[], connected: Record<Platfo
 
   for (const p of posts) {
     const v = byId.get(p.videoId);
-    if (p.state !== 'failed' || !v || !v.platforms[p.platform]) continue;
+    // A platform that is not connected gets one "connect it" item below instead.
+    if (p.state !== 'failed' || !v || !v.platforms[p.platform] || !connected[p.platform]) continue;
     const live = posts.filter((x) => x.videoId === v.id && x.state === 'live' && v.platforms[x.platform]).length;
     out.push({
       kind: 'failed', key: `f-${p.id}`, platform: p.platform, videoId: v.id, postId: p.id,

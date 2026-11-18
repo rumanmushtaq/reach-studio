@@ -16,8 +16,8 @@ export function platformChips(v: V, posts: P[], connected: Record<Platform, stri
     const post = posts.find((x) => x.videoId === v.id && x.platform === p);
     const chip = (text: string, tone: ChipTone): Chip => ({ platform: p, short: PLATFORM_SHORT[p], text, tone });
     if (post?.state === 'live') return chip('live', 'live');
+    if (!connected[p]) return chip('not connected', 'warn'); // its posts wait for the account
     if (post?.state === 'failed') return chip('failed', 'fail');
-    if (!connected[p]) return chip('not connected', 'warn');
     if (post?.state === 'scheduled') return chip('uploaded', 'up');
     if (post?.state === 'staged') return chip('ready', 'up');
     if (v.seoState !== 'ready') return chip('waits for SEO', '');

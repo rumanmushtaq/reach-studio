@@ -8,7 +8,7 @@ import { createTikTokPublisher } from './publishers/tiktok';
 import { AuthError, PublishError, type Publisher, type StepResult } from './publishers/types';
 import { createYouTubePublisher } from './publishers/youtube';
 import * as repo from './repo';
-import { draftSeo, normaliseSeo, PLATFORM_NAMES, ResearchSchema, type Platform } from './seo';
+import { draftSeo, normaliseSeo, ResearchSchema, type Platform } from './seo';
 import { deleteKey, downloadUrl, openStream } from './storage';
 
 // ---------- SEO ----------
@@ -92,7 +92,8 @@ export async function runPost(post: PostRow, now: number): Promise<void> {
   }
   if (video.fileDeletedAt && post.state === 'waiting') return void (await fail('The video file was already deleted.'));
   const account = await repo.getAccount(post.platform);
-  if (!account) return void (await fail(`${PLATFORM_NAMES[post.platform]} is not connected. Connect it in Accounts, then press Retry.`));
+  // Disconnected after the run picked the post: wait for it to be connected again instead of failing.
+  if (!account) return void (await repo.updatePost(post.id, { lockedUntil: null }));
 
   const settings = await repo.getSettings();
   let result: StepResult;

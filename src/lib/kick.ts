@@ -7,13 +7,13 @@ import type { StudioData } from './view';
 // opening the studio also runs work that is due, after the page is sent, at most once a minute per server.
 const EVERY = 60_000;
 
-/** Posts due now (or SEO stuck) that the job runner has not picked up. */
-export function dueWork(d: Pick<StudioData, 'posts' | 'videos' | 'now'>) {
-  const posts = d.posts.filter((p) => p.state === 'waiting' && p.runAt <= d.now && !(p.lockedUntil && p.lockedUntil > d.now));
+/** Posts due now that the job runner has not picked up. Posts for a platform that is not connected wait for it. */
+export function dueWork(d: Pick<StudioData, 'posts' | 'videos' | 'now' | 'connected'>) {
+  const posts = d.posts.filter((p) => p.state === 'waiting' && d.connected[p.platform] && p.runAt <= d.now && !(p.lockedUntil && p.lockedUntil > d.now));
   return { posts, late: posts.filter((p) => p.runAt < d.now - 20 * 60_000) };
 }
 
-export function kickJobs(d: Pick<StudioData, 'posts' | 'videos' | 'now'>) {
+export function kickJobs(d: Pick<StudioData, 'posts' | 'videos' | 'now' | 'connected'>) {
   if (!dueWork(d).posts.length) return;
   const g = globalThis as unknown as { __reachKick?: number };
   if (g.__reachKick && d.now - g.__reachKick < EVERY) return;

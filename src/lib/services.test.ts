@@ -175,14 +175,46 @@ describe('job runner', { timeout: 120_000 }, () => {
     expect((await yt()).runAt).toBe(later);
   });
 
-  it('fails with a clear message when a platform is not connected', async () => {
+  it('holds posts for a platform that is not connected, and runs them once it is', async () => {
+    const saved = (await repo.getAccount('instagram'))!;
     await repo.deleteAccount('instagram');
     const v3 = (await repo.getVideo('v3'))!;
     setNow(v3.slotAt! - slots.HOUR);
+    const ig = () => repo.listPosts(['v3']).then((ps) => ps.find((p) => p.platform === 'instagram')!);
     await svc.tick();
-    const ig = (await repo.listPosts(['v3'])).find((p) => p.platform === 'instagram')!;
-    expect(ig.state).toBe('failed');
-    expect(ig.lastError).toBe('Instagram is not connected. Connect it in Accounts, then press Retry.');
+    expect(await ig()).toMatchObject({ state: 'waiting', lastError: null }); // waits, does not fail
+    // A post that failed this way before is queued again when the platform is connected.
+    await repo.updatePost((await ig()).id, { state: 'failed', lastError: 'Instagram is not connected. Connect it in Accounts, then press Retry.' });
+    await repo.saveAccount(saved);
+    expect(await ig()).toMatchObject({ state: 'waiting', lastError: null });
+    await svc.tick();
+    expect((await ig()).state).not.toBe('waiting');
+  });
+
+  it('changes only the platform that was ticked or unticked', async () => {
+    const v3 = (await repo.getVideo('v3'))!;
+    const rows = () => repo.listPosts(['v3']);
+    const byPlatform = async () => Object.fromEntries((await rows()).map((p) => [p.platform, p]));
+    // Every platform in a different state, so any change to a neighbour shows.
+    const start = await byPlatform();
+    await repo.updatePost(start.youtube.id, { state: 'scheduled', externalId: 'ytX', url: 'https://youtu.be/ytX', runAt: v3.slotAt! });
+    await repo.updatePost(start.facebook.id, { state: 'failed', lastError: 'boom', attempts: 3 });
+    await repo.updatePost(start.instagram.id, { state: 'waiting', runAt: v3.slotAt! - slots.HOUR, attempts: 1, lastError: 'slow' });
+    await repo.updatePost(start.tiktok.id, { state: 'waiting', runAt: v3.slotAt! });
+    const all = { youtube: true, facebook: true, instagram: true, tiktok: true };
+
+    for (const platform of ['facebook', 'instagram', 'tiktok'] as const) {
+      const before = await byPlatform();
+      await repo.setPlatforms('v3', { ...all, [platform]: false });
+      const off = await byPlatform();
+      expect(off[platform]).toBeUndefined();
+      for (const other of Object.keys(before).filter((p) => p !== platform)) expect(off[other]).toEqual(before[other]);
+
+      await repo.setPlatforms('v3', all);
+      const on = await byPlatform();
+      expect(on[platform]).toMatchObject({ state: 'waiting', attempts: 0, lastError: null });
+      for (const other of Object.keys(before).filter((p) => p !== platform)) expect(on[other]).toEqual(before[other]);
+    }
   });
 
   it('keeps a picked time, and holds its posts until the SEO is written', async () => {
