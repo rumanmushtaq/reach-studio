@@ -389,6 +389,16 @@ select.input { padding-right: 32px; }
 @keyframes sk { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 
+/* privacy policy and terms */
+.legal { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; display: flex; flex-direction: column; gap: 28px; }
+.legal-brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 800; font-size: 17px; color: var(--ink); text-decoration: none; }
+.legal article { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(22px, 4vw, 40px); display: flex; flex-direction: column; gap: 12px; line-height: 1.65; }
+.legal h1 { font-size: clamp(28px, 4vw, 36px); font-weight: 800; letter-spacing: -0.02em; }
+.legal h2 { font-size: 18px; font-weight: 800; margin-top: 14px; }
+.legal ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.legal code { font-family: var(--f-mono); font-size: 13px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+.legal a { color: var(--info); }
+
 /* ---------- toast ---------- */
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 14px; background: var(--navy); color: #FFF; padding: 10px 10px 10px 18px; border-radius: 14px; font-weight: 700; font-size: 14px; max-width: calc(100vw - 32px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
 .toast:not(:has(button)) { padding-right: 18px; }

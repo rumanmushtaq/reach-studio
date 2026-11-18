@@ -5,11 +5,13 @@ import { codePending, isOwner, supabaseConfig } from './lib/supabase/config';
 // Every page needs the signed-in studio owner (Supabase Auth), with their 2-step code when they turned it on.
 // The job runner and the Claude helper check CRON_SECRET; signed local file links check their own signature.
 const MACHINE = [/^\/api\/cron\//, /^\/api\/helper\//, /^\/api\/local-files\//];
+// Public pages that Google and Meta link to from their sign-in screens.
+const PUBLIC = [/^\/privacy$/, /^\/terms$/];
 const SIGN_IN = [/^\/login$/, /^\/register$/, /^\/auth\//];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (MACHINE.some((re) => re.test(pathname))) return NextResponse.next();
+  if (MACHINE.some((re) => re.test(pathname)) || PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
   // An email link whose address is not on Supabase's Redirect URLs list lands on the Site URL instead:
   // hand it to the callback so the link still works.
   const q = req.nextUrl.searchParams;

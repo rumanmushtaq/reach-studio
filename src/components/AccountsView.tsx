@@ -34,16 +34,16 @@ export function AccountsView({ connected, setup, banner }: { connected: Record<P
   });
 
   const steps: [string, boolean, React.ReactNode][] = [
-    ['Claude helper running on your laptop', setup.claude, 'Run npm run claude-helper (README step 3)'],
-    ['Video storage', setup.storage, 'Set CLOUDINARY_URL (README step 2)'],
+    ['Claude helper running on your laptop', setup.claude, 'Run npm run claude-helper (README step 4)'],
+    ['Video storage', setup.storage, 'Set CLOUDINARY_URL (README step 3)'],
     ...PLATFORMS.map((p): [string, boolean, React.ReactNode] => [`${PLATFORM_NAMES[p]} connected`, !!connected[p], 'Connect it below']),
     ['Channel links for descriptions', setup.links, <Link key="l" href="/settings">Add in Settings</Link>],
   ];
   const done = steps.filter((s) => s[1]).length;
 
   const connectButton = (p: Platform) => {
-    if (p === 'youtube') return setup.google ? <a className="btn dark" href="/api/oauth/google/start">Connect YouTube</a> : <span className="small muted">Add the Google keys first (README step 4).</span>;
-    if (p === 'facebook' || p === 'instagram') return setup.meta ? <a className="btn dark" href="/api/oauth/meta/start">Connect Facebook and Instagram</a> : <span className="small muted">Add the Meta keys first (README step 5).</span>;
+    if (p === 'youtube') return setup.google ? <a className="btn dark" href="/api/oauth/google/start">Connect YouTube</a> : <span className="small muted">Add the Google keys first (README step 5).</span>;
+    if (p === 'facebook' || p === 'instagram') return setup.meta ? <a className="btn dark" href="/api/oauth/meta/start">Connect Facebook and Instagram</a> : <span className="small muted">Add the Meta keys first (README step 6).</span>;
     return (
       <form className="inline" style={{ alignItems: 'flex-start' }} onSubmit={submitTikTok} noValidate>
         <div style={{ flex: '1 1 180px' }}><Field id="tt-key" label={<span className="sr-only">Upload-Post API key</span>} error={te.apiKey}>
