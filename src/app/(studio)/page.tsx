@@ -48,8 +48,8 @@ export default async function TodayPage() {
           <h1>{next ? <>Next post goes live <Countdown to={next.slotAt!} now={d.now} /></> : d.videos.length ? 'Nothing booked yet' : 'Welcome to Reach Studio'}</h1>
         </div>
         <div className="actions">
-          <Link className="btn" href="/calendar">Open planner</Link>
-          <Link className="btn primary" href="/upload"><Icon name="plus" size={18} stroke={2.4} />Add videos</Link>
+          <Link className="btn" href="/calendar" prefetch>Open planner</Link>
+          <Link className="btn primary" href="/upload" prefetch><Icon name="plus" size={18} stroke={2.4} />Add videos</Link>
         </div>
       </header>
 

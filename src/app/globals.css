@@ -346,6 +346,7 @@ select.input { padding-right: 32px; }
 .acct-card .top h2 { flex: 1; }
 .timechips { display: flex; flex-wrap: wrap; gap: 8px; }
 .timechip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 14px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font: 700 15px var(--f-mono); }
+.timechip.pending { opacity: 0.6; border-style: dashed; }
 .timechip button { border: 0; background: var(--surface); border-radius: 50%; width: 30px; height: 30px; color: var(--muted); }
 .setup { display: flex; flex-direction: column; gap: 6px; }
 .setup li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 36px; }

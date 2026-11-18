@@ -22,6 +22,7 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
   const toast = useToast();
   const { run, pending } = useAction('Saved');
   const addTimeCall = useMutation({ mutationFn: addTime });
+  const removeTimeCall = useMutation({ mutationFn: removeTime });
   const saveChannelCall = useMutation({ mutationFn: saveChannel });
   const changePasswordCall = useMutation({ mutationFn: changePassword });
 
@@ -42,6 +43,12 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
     if (applyResult(pwForm, r)) { toast(r.ok && r.message ? r.message : 'Password changed'); pwForm.reset(); }
   });
 
+  // Show a change to the daily times at once, while the server saves it.
+  const adding = addTimeCall.isPending ? addTimeCall.variables?.time : undefined;
+  const removing = removeTimeCall.isPending ? removeTimeCall.variables : undefined;
+  const shownTimes = [...new Set([...times, ...(adding ? [adding] : [])])].filter((t) => t !== removing).sort();
+  const busyTimes = addTimeCall.isPending || removeTimeCall.isPending;
+
   const ce = chanForm.formState.errors;
   const pe = pwForm.formState.errors;
 
@@ -55,9 +62,9 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
         <h2 id="times">Daily posting times</h2>
         <p className="small muted">Every day gets these slots, in Pakistan time. New videos take the next free one. Changing them does not move videos already booked.</p>
         <div className="timechips">
-          {times.map((t) => (
-            <span className="timechip" key={t}>{timeLabel(t)}
-              <button aria-label={`Remove ${timeLabel(t)}`} disabled={times.length < 2 || pending} onClick={() => run(() => removeTime(t))}>×</button>
+          {shownTimes.map((t) => (
+            <span className={`timechip ${t === adding ? 'pending' : ''}`} key={t}>{timeLabel(t)}
+              <button aria-label={`Remove ${timeLabel(t)}`} disabled={shownTimes.length < 2 || pending || busyTimes} onClick={() => run(() => removeTimeCall.mutateAsync(t))}>×</button>
             </span>
           ))}
         </div>
@@ -67,7 +74,7 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
               {QUARTER_HOURS.map((q) => <option key={q} value={q}>{timeLabel(q)}</option>)}
             </select>
           </label>
-          <button className="btn" disabled={timeForm.formState.isSubmitting}>Add daily time</button>
+          <button className="btn" disabled={busyTimes}>{addTimeCall.isPending ? 'Adding…' : 'Add daily time'}</button>
           {timeForm.formState.errors.time && <span className="err" role="alert">{timeForm.formState.errors.time.message}</span>}
         </form>
       </section>
