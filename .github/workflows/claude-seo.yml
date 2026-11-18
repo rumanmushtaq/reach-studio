@@ -1,0 +1,39 @@
+# Writes each new video's SEO with Claude Code, signed in with your Claude plan (no API key), every 15 minutes.
+# Repository secrets:
+#   STUDIO_URL               e.g. https://reach-studio-five.vercel.app (shared with tick.yml)
+#   CRON_SECRET              the same value as in Vercel (shared with tick.yml)
+#   CLAUDE_CODE_OAUTH_TOKEN  from running `claude setup-token` on your computer
+name: claude-seo
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: claude-seo # one run at a time; a long run makes the next one wait instead of doubling up
+  cancel-in-progress: false
+jobs:
+  seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      HELPER_STUDIO_URL: ${{ secrets.STUDIO_URL }}
+      HELPER_SECRET: ${{ secrets.CRON_SECRET }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Check the secrets
+        run: |
+          missing=""
+          [ -n "$HELPER_STUDIO_URL" ] || missing="$missing STUDIO_URL"
+          [ -n "$HELPER_SECRET" ] || missing="$missing CRON_SECRET"
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || missing="$missing CLAUDE_CODE_OAUTH_TOKEN"
+          if [ -n "$missing" ]; then echo "::error::Add these repository secrets:$missing"; exit 1; fi
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Write SEO for waiting videos
+        run: node scripts/claude-helper.mjs --once

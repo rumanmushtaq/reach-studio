@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { CopyLine } from './ClaudeCard';
 
-// Uploads and posts happen when the job runner is called. Vercel's free plan calls it once a day, so a free
-// cron-job.org job calls it every 15 minutes. This card says whether posts are late and how to set that up.
+// Uploads and posts happen when the job runner is called. Vercel's free plan calls it once a day, so GitHub
+// Actions (tick.yml) or a free cron-job.org job calls it every 15 minutes. This card says whether posts are late and how to set that up.
 
 export function JobRunnerCard({ late }: { late: number }) {
   const [origin, setOrigin] = useState('https://your-studio.vercel.app');
@@ -18,6 +18,10 @@ export function JobRunnerCard({ late }: { late: number }) {
       <p className="small muted">
         The job runner uploads each video and posts it at its slot. Vercel&apos;s free plan only calls it once a day,
         so set up a free call every 15 minutes. Until then, the studio also runs due work whenever you open it.
+      </p>
+      <p className="small muted">
+        <b>Added the GitHub secrets in the Claude card?</b> Then GitHub already calls it every 15 minutes (the
+        <code> tick</code> workflow) and you can skip the steps below.
       </p>
       <ol className="claude-steps">
         <li>

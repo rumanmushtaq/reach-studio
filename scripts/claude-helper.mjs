@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // Claude helper: writes each video's SEO with Claude Code, signed in with your own Claude account,
-// so the studio needs no Claude API key. Leave it running on your laptop: `npm run claude-helper`.
+// so the studio needs no Claude API key. Two ways to run it:
+//   - GitHub Actions (.github/workflows/claude-seo.yml) runs `--once` every 15 minutes with a token from
+//     `claude setup-token`, so no computer has to stay on.
+//   - On a laptop: `npm run claude-helper`, left open.
+//
+// `--once`: do every waiting video, then exit (non-zero when the studio cannot be reached or a video failed).
 //
 // It asks the studio for videos waiting for Claude about once a minute, saves their frames to a
 // temporary folder, runs `claude -p` there (it may only read files, search the web and read web pages to
@@ -21,6 +26,8 @@ if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 const STUDIO = (process.env.HELPER_STUDIO_URL || process.env.APP_URL || '').replace(/\/$/, '');
 const SECRET = process.env.HELPER_SECRET || process.env.CRON_SECRET || '';
 const EVERY_MS = 60_000;
+const ONCE = process.argv.includes('--once');
+const ONCE_BUDGET_MS = 40 * 60_000; // a run stops taking new videos after this; the next run continues
 const CLAUDE_TIMEOUT_MS = 10 * 60_000;
 
 if (!STUDIO || !SECRET) {
@@ -67,7 +74,11 @@ function runClaude(prompt, dir) {
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error((err || out).trim().slice(0, 300) || `claude exited with ${code}`));
+      if (code !== 0) {
+        // On failure Claude Code still prints its JSON result; its `result` says why (e.g. an expired sign-in).
+        const why = (() => { try { return JSON.parse(out).result; } catch { return undefined; } })();
+        return reject(new Error(String(why || err || out).trim().slice(0, 300) || `claude exited with ${code}`));
+      }
       try { resolve(JSON.parse(out)); } catch { reject(new Error('Claude Code gave output that is not JSON')); }
     });
     child.stdin.end(prompt);
@@ -96,12 +107,35 @@ async function work(job) {
     const seo = seoFrom(await runClaude(job.prompt, dir));
     const { result } = await studio(`/api/helper/jobs/${job.id}`, { method: 'POST', body: JSON.stringify({ seo }) });
     log(result === 'saved' ? `Done: "${job.name}"` : `Not used for "${job.name}" (posting had started, or you edited it)`);
+    return true;
   } catch (e) {
     log(`Failed for "${job.name}": ${e.message}`);
     await studio(`/api/helper/jobs/${job.id}`, { method: 'POST', body: JSON.stringify({ error: e.message }) }).catch(() => undefined);
+    return false;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+if (ONCE) {
+  log(`Claude helper for ${STUDIO}, one run.`);
+  const started = Date.now();
+  let done = 0;
+  let failed = 0;
+  try {
+    // The studio hands out two videos at a time; ask again until none are left.
+    while (Date.now() - started < ONCE_BUDGET_MS) {
+      const { jobs } = await studio('/api/helper/jobs');
+      if (!jobs.length) break;
+      for (const job of jobs) { if (await work(job)) done++; else failed++; }
+    }
+  } catch (e) {
+    log(e.message);
+    process.exit(1);
+  }
+  if (!done && !failed) log('No videos are waiting for Claude.');
+  else log(`Wrote ${done}, failed ${failed}.`);
+  process.exit(failed ? 1 : 0); // a red run on GitHub, so a failure is seen
 }
 
 log(`Claude helper for ${STUDIO}. Leave this window open; press Ctrl+C to stop.`);

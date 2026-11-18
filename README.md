@@ -154,20 +154,30 @@ stored under random names and deleted the day after they are live everywhere.
 
 ### 4. Claude (your Claude account, no API key)
 
-Claude writes the SEO through **Claude Code** on your laptop, signed in with your Claude account
-(Pro or Max), so its use counts toward your plan and there is no API key or bill.
+Claude writes the SEO through **Claude Code**, signed in with your Claude account (Pro or Max), so its
+use counts toward your plan and there is no API key or bill. GitHub Actions runs it every 15 minutes
+(`.github/workflows/claude-seo.yml`), so no computer has to stay on.
 
-1. Install Claude Code and run `claude` once to sign in with your Claude account.
-2. In this folder's `.env.local`, set `HELPER_STUDIO_URL` to your deployed studio address and
-   `HELPER_SECRET` to its `CRON_SECRET`.
-3. Start the helper and leave the window open:
+1. On your computer, install Claude Code and make a long-lived token for it:
 
 ```bash
-npm run claude-helper
+npm install -g @anthropic-ai/claude-code
+claude setup-token
 ```
 
-It checks for new videos every minute. The **Accounts** page shows whether it is running. While it is
-off, videos still post on time with the basic SEO draft.
+2. In the GitHub repository open **Settings → Secrets and variables → Actions** and add three
+   repository secrets:
+   - `STUDIO_URL`: your deployed studio address, e.g. `https://reach-studio-five.vercel.app`
+   - `CRON_SECRET`: the same value as `CRON_SECRET` in Vercel
+   - `CLAUDE_CODE_OAUTH_TOKEN`: the token from step 1
+3. Open **Actions → claude-seo → Run workflow** once to check it. The **Settings** page shows
+   whether Claude is running. While it is off, videos still post on time with the basic SEO draft.
+
+The same `STUDIO_URL` and `CRON_SECRET` secrets also let the `tick` workflow call the job runner every
+15 minutes, so cron-job.org is optional.
+
+On a laptop instead: set `HELPER_STUDIO_URL` and `HELPER_SECRET` (the Vercel `CRON_SECRET`) in
+`.env.local`, run `claude` once to sign in, and leave `npm run claude-helper` open.
 
 ### 5. YouTube
 
@@ -219,8 +229,10 @@ can call it too: set the repository secrets `STUDIO_URL` and `CRON_SECRET`.
   of the slot.
 - Cloudinary's free plan: videos up to 100 MB each, 25 credits a month. With next-day cleanup, a week of
   cartoons booked ahead fits easily.
-- Claude rewrites the SEO only while the helper runs on your laptop. A video that starts posting first
-  keeps the basic draft.
+- Claude rewrites the SEO when the helper runs (every 15 minutes on GitHub). A video that starts posting
+  first keeps the basic draft.
+- GitHub turns scheduled workflows off after 60 days with no commits to the repository. Turn them back
+  on under **Actions** if that happens.
 - If you remove a video after it was uploaded early, delete it on YouTube or Facebook too.
 - Forgot your password? On the sign-in page press **Forgot password?**, type your email, and Supabase
   emails you a reset link. Open it in the same browser you asked from. Choose a new password; every
