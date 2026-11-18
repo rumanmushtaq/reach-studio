@@ -12,10 +12,11 @@ const SIGN_IN = [/^\/login$/, /^\/register$/, /^\/auth\//];
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (MACHINE.some((re) => re.test(pathname)) || PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
-  // An email link whose address is not on Supabase's Redirect URLs list lands on the Site URL instead:
-  // hand it to the callback so the link still works.
+  // An email link whose address is not on Supabase's Redirect URLs list lands on the Site URL (the home
+  // page) instead: hand it to the callback so the link still works. Only the home page: YouTube and Meta
+  // sign-ins come back to their own /api/oauth/... routes with a ?code= of their own.
   const q = req.nextUrl.searchParams;
-  if (!pathname.startsWith('/auth/') && (q.has('code') || q.has('token_hash') || q.has('error_code'))) {
+  if (pathname === '/' && (q.has('code') || q.has('token_hash') || q.has('error_code'))) {
     const to = new URL('/auth/callback', req.url);
     to.search = req.nextUrl.search;
     return NextResponse.redirect(to);
