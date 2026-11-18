@@ -128,7 +128,7 @@ function Inbox({ kind, email, onBack }: { kind: 'confirm' | 'reset'; email: stri
         ? 'We sent a link to confirm your email. Open it to finish creating your account.'
         : 'We sent a link to set a new password. Open it on this device, in this browser.'} />
       <p className="inbox-email"><span className="muted small">Sent to</span><strong>{email}</strong></p>
-      <ul className="steps small muted">
+      <ul className="inbox-steps small muted">
         <li>The email comes from Supabase and can take a minute.</li>
         <li>Not there? Look in Spam or Promotions.</li>
         <li>The link works once and expires after an hour.</li>

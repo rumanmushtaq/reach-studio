@@ -16,7 +16,7 @@ type Mode = 'next' | 'tonight' | 'weekend' | 'pick';
 type Stage = 'read' | 'upload' | 'seo' | 'booked' | 'failed';
 type Job = {
   key: number; name: string; size: number; thumb?: string; vertical: boolean;
-  stage: Stage; progress: number; error?: string; id?: string; slotAt?: number | null; abort?: () => void;
+  stage: Stage; progress: number; detail?: string; error?: string; id?: string; slotAt?: number | null; abort?: () => void;
 };
 
 const STEPS: { stage: Stage; label: string }[] = [
@@ -75,21 +75,31 @@ export function UploadView({ nextFree, tonight, weekend, taken, now, preset, max
     // One after another, so slots are booked in the order the videos were added.
     for (const [i, { key, file }] of made.entries()) {
       try {
-        const meta = await readVideo(file);
-        update(key, { vertical: !!(meta.width && meta.height && meta.height > meta.width), thumb: meta.thumb ? URL.createObjectURL(meta.thumb) : undefined, stage: 'upload' });
+        const meta = await readVideo(file, (s) => update(key, { detail: s.text, progress: s.progress }));
+        update(key, { vertical: !!(meta.width && meta.height && meta.height > meta.width), thumb: meta.thumb ? URL.createObjectURL(meta.thumb) : undefined, stage: 'upload', progress: 0, detail: 'Getting an upload link' });
         const links = await startUpload.mutateAsync({
           name: titleFromFile(file.name), note: text, fileName: file.name, size: file.size, mime: file.type || 'video/mp4',
           duration: meta.duration, width: meta.width, height: meta.height, frames: meta.frames.length, slotAt: slots[i],
         });
-        const upload = put(links.video, file, file.type || 'video/mp4', (p) => update(key, { progress: p }));
+        const mb = (n: number) => (n / 1024 ** 2).toFixed(1);
+        const started = Date.now();
+        const upload = put(links.video, file, file.type || 'video/mp4', (p) => {
+          const sent = p * file.size;
+          const secs = (Date.now() - started) / 1000;
+          const speed = secs > 1 ? sent / secs : 0;
+          const left = speed ? Math.max(0, (file.size - sent) / speed) : 0;
+          update(key, { progress: p, detail: `${mb(sent)} of ${mb(file.size)} MB${speed ? ` · ${mb(speed)} MB/s · about ${left < 60 ? `${Math.ceil(left)} s` : `${Math.ceil(left / 60)} min`} left` : ''}` });
+        });
         update(key, { id: links.id, abort: upload.abort });
         await upload.done;
+        update(key, { progress: 1, detail: `Sending ${meta.frames.length} frames${meta.thumb ? ' and the thumbnail' : ''} for Claude` });
         await Promise.all([
           ...meta.frames.map((f, n) => put(links.frames[n], f, 'image/jpeg').done),
           ...(links.thumb && meta.thumb ? [put(links.thumb, meta.thumb, 'image/jpeg').done] : []),
         ]);
+        update(key, { detail: 'Saving the video in the studio' });
         await finishUpload.mutateAsync(links.id);
-        update(key, { stage: 'seo', progress: 1, abort: undefined });
+        update(key, { stage: 'seo', progress: 1, abort: undefined, detail: 'Writing the title, description and tags for each platform, then booking a slot' });
         router.refresh();
       } catch (err) {
         update(key, { stage: 'failed', error: (err as Error).message, abort: undefined });
@@ -188,15 +198,17 @@ function JobCard({ job: j, onBooked, onCancel, onDismiss }: { job: Job; onBooked
           <ol className="steps" aria-label="Progress">
             {STEPS.map((s, i) => {
               const cls = i < at || j.stage === 'booked' ? 'done' : i === at ? `now${s.stage === 'seo' ? ' seo' : ''}` : '';
-              const label = i === at && s.stage === 'upload' ? `Uploading ${Math.round(j.progress * 100)}%` : i === at && s.stage === 'seo' ? 'Writing SEO…' : i === at && s.stage === 'read' ? 'Reading…' : s.label;
+              const pct = `${Math.round(j.progress * 100)}%`;
+              const label = i === at && s.stage === 'upload' ? `Uploading ${pct}` : i === at && s.stage === 'seo' ? 'Writing SEO…' : i === at && s.stage === 'read' ? `Reading ${pct}` : s.label;
               return (
                 <li key={s.stage} className={cls}>
-                  <span className="bar"><span style={i === at && s.stage === 'upload' ? { width: `${j.progress * 100}%` } : undefined} /></span>{label}
+                  <span className="bar"><span style={i === at && (s.stage === 'upload' || s.stage === 'read') ? { width: `${Math.max(3, j.progress * 100)}%` } : undefined} /></span>{label}
                 </li>
               );
             })}
           </ol>
         )}
+        {j.stage !== 'failed' && j.stage !== 'booked' && j.detail && <span className="job-detail" aria-live="polite">{j.detail}</span>}
       </div>
       {j.stage === 'booked' && j.id ? (
         <Link href={`/videos/${j.id}`} style={{ textAlign: 'right', textDecoration: 'none' }}><b className="mono" style={{ display: 'block', color: 'var(--ink)' }}>{formatSlot(j.slotAt)}</b><span style={{ fontWeight: 700 }}>Open</span></Link>

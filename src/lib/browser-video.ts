@@ -21,8 +21,12 @@ function grab(el: HTMLVideoElement, width: number, quality: number) {
   return new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('frame'))), 'image/jpeg', quality));
 }
 
+/** What reading a video is doing now, for the progress line: a short text and how far (0 to 1). */
+export type ReadStep = { text: string; progress: number };
+
 /** Never rejects: a file the browser cannot decode still uploads, just without frames. */
-export function readVideo(file: File): Promise<VideoMeta> {
+export function readVideo(file: File, onStep?: (s: ReadStep) => void): Promise<VideoMeta> {
+  onStep?.({ text: 'Opening the file', progress: 0.05 });
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const el = document.createElement('video');
@@ -34,9 +38,16 @@ export function readVideo(file: File): Promise<VideoMeta> {
     el.onloadeddata = async () => {
       const w = el.videoWidth, h = el.videoHeight;
       const d = isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+      const len = d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : 'unknown length';
+      onStep?.({ text: `Found ${len} · ${w && h ? `${w}×${h}${h > w ? ', vertical' : ''}` : 'size unknown'}`, progress: 0.2 });
       try {
         const frames: Blob[] = [];
-        for (let i = 1; i <= 4; i++) { await seek(el, ((d ?? 1) * i) / 5); frames.push(await grab(el, 640, 0.75)); }
+        for (let i = 1; i <= 4; i++) {
+          onStep?.({ text: `Taking frame ${i} of 4 for Claude`, progress: 0.2 + i * 0.17 });
+          await seek(el, ((d ?? 1) * i) / 5);
+          frames.push(await grab(el, 640, 0.75));
+        }
+        onStep?.({ text: 'Making the thumbnail', progress: 0.95 });
         await seek(el, (d ?? 1) * 0.4);
         done({ duration: d, width: w || null, height: h || null, frames, thumb: await grab(el, 320, 0.75) });
       } catch {
