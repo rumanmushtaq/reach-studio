@@ -28,11 +28,34 @@ export function googleAuthUrl(state: string): string {
   return googleClient().generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: GOOGLE_SCOPES, state });
 }
 
+/**
+ * Turns the code from Google's sign-in into tokens and finds the channel. Plain fetch with time limits, so a
+ * slow answer from Google ends in a clear error instead of the request running until Vercel stops it.
+ */
 export async function googleExchange(code: string) {
-  const { tokens } = await googleClient().getToken(code);
-  const yt = youtube({ version: 'v3', auth: googleClient(tokens) });
-  const res = await yt.channels.list({ part: ['snippet'], mine: true });
-  const channel = res.data.items?.[0];
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: googleRedirectUri(), grant_type: 'authorization_code',
+    }),
+    signal: AbortSignal.timeout(15_000),
+  }).catch((e: Error) => { throw new Error(`Google did not answer the token request (${e.name === 'TimeoutError' ? 'timed out' : e.message})`); });
+  const t = await tokenRes.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; token_type?: string; id_token?: string; error?: string; error_description?: string };
+  if (!tokenRes.ok || !t.access_token) throw new Error(`Google refused the sign-in code: ${t.error_description ?? t.error ?? tokenRes.status}`);
+  const tokens = {
+    access_token: t.access_token, refresh_token: t.refresh_token ?? null, scope: t.scope, token_type: t.token_type,
+    expiry_date: t.expires_in ? Date.now() + t.expires_in * 1000 : null,
+  };
+
+  const chRes = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+    headers: { authorization: `Bearer ${t.access_token}` },
+    signal: AbortSignal.timeout(15_000),
+  }).catch((e: Error) => { throw new Error(`YouTube did not answer the channel lookup (${e.name === 'TimeoutError' ? 'timed out' : e.message})`); });
+  const ch = await chRes.json().catch(() => ({})) as { items?: { id?: string; snippet?: { title?: string } }[]; error?: { message?: string } };
+  if (!chRes.ok) throw new Error(`YouTube refused the channel lookup: ${ch.error?.message ?? chRes.status}`);
+  const channel = ch.items?.[0];
   if (!channel?.id) throw new Error('This Google account has no YouTube channel');
   return { tokens, channel: { id: channel.id, title: channel.snippet?.title ?? 'YouTube channel' } };
 }
