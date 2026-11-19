@@ -37,7 +37,7 @@ export default async function TodayPage() {
   const steps = [
     { icon: UserPlus, title: 'Connect your accounts', text: `${connectedCount} of ${PLATFORMS.length} connected. Posts go only to connected accounts.`, href: '/accounts', action: 'Connect', done: connectedCount === PLATFORMS.length },
     { icon: UploadCloud, title: 'Add your first video', text: 'It takes the next free slot. You can move it in the planner.', href: '/upload', action: 'Add a video', done: d.videos.length > 0 },
-    { icon: Sparkles, title: 'Start the Claude helper', text: 'Run npm run claude-helper on your laptop so Claude writes the SEO.', href: '/accounts', action: 'How to', done: d.setup.claude },
+    { icon: Sparkles, title: 'Set up Claude', text: 'Add three GitHub secrets so Claude writes the SEO.', href: '/settings', action: 'How to', done: d.setup.claude },
     { icon: Link2, title: 'Add your channel links', text: 'They go at the end of every description.', href: '/settings', action: 'Add links', done: Object.values(d.settings.links).some((l) => !!l.trim()) },
   ];
   const stepsDone = steps.filter((x) => x.done).length;
@@ -62,7 +62,7 @@ export default async function TodayPage() {
           <Link className="btn sm" href="/settings#jobs">How to set it up</Link>
         </div>
       )}
-      {!d.setup.claude && writing.length > 0 && <div className="banner info">{writing.length} video{writing.length > 1 ? 's are' : ' is'} waiting for Claude. Run <code>npm run claude-helper</code> on your laptop; until then they use a basic SEO draft.</div>}
+      {!d.setup.claude && writing.length > 0 && <div className="banner info">{writing.length} video{writing.length > 1 ? 's are' : ' is'} waiting for Claude, which has not checked in lately. Until it does they use a basic SEO draft. <Link href="/settings">Check Claude in Settings</Link></div>}
 
       <div className="cols">
         <section className="main" aria-labelledby="coming">

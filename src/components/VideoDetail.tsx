@@ -33,6 +33,7 @@ export function VideoDetail(props: Props) {
   const { video, posts, now, connected } = props;
   const router = useRouter();
   const { run, pending: acting } = useAction();
+  const claude = useAction();
   const { move: moveVideo, pending: moving } = useMoveSlot();
   const pending = acting || moving;
   const toast = useToast();
@@ -51,6 +52,8 @@ export function VideoDetail(props: Props) {
   const status = videoStatus(video, posts, now);
   const anyLive = posts.some((p) => p.state === 'live');
   const writing = video.seoState !== 'ready' || !!video.claudeWantedAt;
+  // Once a platform has the video, its text there is fixed, so Claude has nothing left to change.
+  const sent = posts.some((p) => p.state !== 'waiting' || !!p.externalId);
 
   const move = (to: number) => moveVideo(video.id, to, { name: video.name, from: video.slotAt });
 
@@ -67,14 +70,21 @@ export function VideoDetail(props: Props) {
           </div>
         </div>
         <Pill status={status} />
-        <button className="btn" disabled={writing || pending || anyLive} onClick={() => run(() => rewriteSeo(video.id))}>
-          {writing ? <><span className="spin" aria-hidden="true" />Waiting for Claude…</> : <><Icon name="spark" size={16} />Rewrite with Claude</>}
+        <button
+          className="btn" disabled={writing || pending || claude.pending || anyLive || sent} onClick={() => claude.run(() => rewriteSeo(video.id))}
+          title={sent ? 'Already uploaded, so its text no longer changes' : undefined}
+        >
+          {writing || claude.pending
+            ? <><span className="spin" aria-hidden="true" />{claude.pending ? 'Sending to Claude…' : 'Waiting for Claude…'}</>
+            : <><Icon name="spark" size={16} />Rewrite with Claude</>}
         </button>
       </header>
 
       {video.uploadState === 'uploading' && <div className="banner warn">This upload did not finish. Remove the video and add it again.</div>}
       {video.seoNote && <div className="banner warn">{video.seoNote}</div>}
-      {video.claudeWantedAt && <div className="banner info">Claude writes this SEO through the helper on your laptop (<code>npm run claude-helper</code>). Until then the basic draft below is used, and your own edits cancel the rewrite.</div>}
+      {video.claudeWantedAt && (sent
+        ? <div className="banner warn"><span>This video is already uploaded, so Claude can no longer change its text there. The text below stays.</span></div>
+        : <div className="banner info"><span>Claude is writing this SEO on GitHub, usually within a few minutes. Until then the basic draft below is used, and your own edits cancel the rewrite.</span></div>)}
 
       <div className="cols side-first">
         <div className="main" style={{ gap: 20 }}>

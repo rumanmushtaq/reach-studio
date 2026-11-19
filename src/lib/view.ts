@@ -26,8 +26,8 @@ export const studioData = cache(async () => {
     thumbs,
     customThumbs,
     connected,
-    // The Claude helper on the laptop counts as running when it called in the last 5 minutes.
-    setup: { claude: !!settings.helperSeenAt && now - settings.helperSeenAt < 5 * 60_000, storage: has.storage(), google: has.google(), meta: has.meta() },
+    // Claude counts as running when it checked in lately. GitHub runs it every 15 minutes, sometimes late.
+    setup: { claude: !!settings.helperSeenAt && now - settings.helperSeenAt < 25 * 60_000, storage: has.storage(), google: has.google(), meta: has.meta() },
   };
 });
 

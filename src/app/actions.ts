@@ -102,6 +102,9 @@ export async function rewriteSeo(videoId: string): Promise<Result> {
   if (!video) return fail('This video was removed.');
   if (video.seoState !== 'ready') return fail('The basic draft is still being written. Try again in a moment.');
   if (video.claudeWantedAt) return fail('Already waiting for Claude.');
+  if ((await repo.listPosts([videoId])).some((p) => p.state !== 'waiting' || p.externalId)) {
+    return fail('This video is already uploaded, so its title and description there no longer change.');
+  }
   await repo.updateVideo(videoId, { claudeWantedAt: Date.now(), claudeClaimedAt: null });
   const start = await startClaude();
   refresh();

@@ -34,7 +34,7 @@ export function AccountsView({ connected, setup, banner }: { connected: Record<P
   });
 
   const steps: [string, boolean, React.ReactNode][] = [
-    ['Claude helper running on your laptop', setup.claude, 'Run npm run claude-helper (README step 4)'],
+    ['Claude writing the SEO', setup.claude, <Link key="c" href="/settings">Set up in Settings</Link>],
     ['Video storage', setup.storage, 'Set CLOUDINARY_URL (README step 3)'],
     ...PLATFORMS.map((p): [string, boolean, React.ReactNode] => [`${PLATFORM_NAMES[p]} connected`, !!connected[p], 'Connect it below']),
     ['Channel links for descriptions', setup.links, <Link key="l" href="/settings">Add in Settings</Link>],
