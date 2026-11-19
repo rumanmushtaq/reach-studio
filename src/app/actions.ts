@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { startClaude } from '@/lib/claude-start';
 import { encrypt } from '@/lib/crypto';
 import { env } from '@/lib/env';
 import {
@@ -102,11 +103,11 @@ export async function rewriteSeo(videoId: string): Promise<Result> {
   if (video.seoState !== 'ready') return fail('The basic draft is still being written. Try again in a moment.');
   if (video.claudeWantedAt) return fail('Already waiting for Claude.');
   await repo.updateVideo(videoId, { claudeWantedAt: Date.now(), claudeClaimedAt: null });
-  const { helperSeenAt } = await repo.getSettings();
+  const start = await startClaude();
   refresh();
-  return ok(helperSeenAt && Date.now() - helperSeenAt < 5 * 60_000
-    ? 'Sent to Claude on your laptop. About 2 minutes.'
-    : 'Queued. Claude writes it when the helper runs on your laptop (npm run claude-helper).');
+  return ok(start === 'started' || start === 'recent'
+    ? 'Sent to Claude on GitHub. About 3 minutes.'
+    : 'Queued. Claude writes it on its next run, every 15 minutes or later.');
 }
 
 export async function deleteVideo(videoId: string): Promise<Result> {

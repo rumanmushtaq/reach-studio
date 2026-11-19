@@ -62,6 +62,11 @@ export function ClaudeCard({ seenAt, now }: { seenAt: number | null; now: number
           <CopyLine text="CLAUDE_CODE_OAUTH_TOKEN" />
         </li>
         <li>
+          <b>Let the studio start Claude right after an upload</b>
+          <span className="small muted">GitHub runs the 15-minute schedule late, sometimes hours late. In GitHub open <b>Settings → Developer settings → Fine-grained tokens → Generate new token</b>, choose only this repository and give it <b>Actions: Read and write</b>. Add it in Vercel as the environment variable below, then redeploy.</span>
+          <CopyLine text="GITHUB_ACTIONS_TOKEN" />
+        </li>
+        <li>
           <b>Run it once to check</b>
           <span className="small muted">Open <b>Actions → claude-seo → Run workflow</b>. A green tick means it works, and this card shows Running. After that it runs by itself. While it is off, videos still post with a basic SEO draft.</span>
         </li>

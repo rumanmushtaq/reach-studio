@@ -1,5 +1,6 @@
 import 'server-only';
 import { seoPrompt } from './claude';
+import { startClaude } from './claude-start';
 import { decrypt, encrypt } from './crypto';
 import type { PostRow, VideoRow } from './db/schema';
 import { MAX_ATTEMPTS, retryAt, shouldDeleteFile } from './plan';
@@ -26,6 +27,7 @@ export async function runSeo(videoId: string): Promise<void> {
   await repo.updateVideo(videoId, { claudeWantedAt: Date.now(), claudeClaimedAt: null });
   const fresh = await repo.getVideo(videoId);
   if (fresh && !fresh.slotAt) await repo.bookSlot(videoId);
+  await startClaude();
 }
 
 /** True once any platform has the video: from then on the SEO there no longer changes. */
@@ -181,6 +183,9 @@ export async function tick(budgetMs = 240_000): Promise<TickReport> {
     await runSeo(v.id);
     report.seo++;
   }
+  // A start that failed earlier gets another try. A job taken in the last 15 minutes is still being written.
+  const now = Date.now();
+  if ((await repo.listVideos()).some((v) => v.claudeWantedAt && (!v.claudeClaimedAt || v.claudeClaimedAt < now - 15 * 60_000))) await startClaude(now);
 
   for (const post of await repo.duePosts(Date.now())) {
     if (left() < 60_000) { report.stoppedEarly = true; break; }

@@ -22,6 +22,14 @@ export const env = {
   get META_APP_SECRET() { return read('META_APP_SECRET'); },
   get META_CONFIG_ID() { return read('META_CONFIG_ID'); },
   get META_GRAPH_VERSION() { return read('META_GRAPH_VERSION', 'v23.0'); },
+
+  // Starts the claude-seo GitHub workflow as soon as a video needs Claude (a token with Actions: write).
+  get GITHUB_ACTIONS_TOKEN() { return read('GITHUB_ACTIONS_TOKEN'); },
+  // owner/name; on Vercel it comes from the connected Git repository.
+  get GITHUB_REPO() {
+    const owner = read('VERCEL_GIT_REPO_OWNER'), slug = read('VERCEL_GIT_REPO_SLUG');
+    return read('GITHUB_REPO', owner && slug ? `${owner}/${slug}` : '');
+  },
 };
 
 export const has = {
@@ -29,4 +37,5 @@ export const has = {
   google: () => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
   meta: () => !!(env.META_APP_ID && env.META_APP_SECRET),
   storage: () => has.cloudinary(),
+  claudeStart: () => !!(env.GITHUB_ACTIONS_TOKEN && env.GITHUB_REPO),
 };
