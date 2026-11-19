@@ -22,6 +22,11 @@ let lastUsed = 0;
 // query on a dead connection waits forever; so after a quiet spell the studio opens fresh connections.
 const STALE_AFTER = 15_000;
 const OPEN_LIMIT = 20_000;
+// Fluid compute runs several requests in one server, so old connections may still be answering another
+// request: they get this long to finish before they are cut.
+const RETIRE_AFTER_S = 10;
+// A read on a dead connection can wait forever; withDbRetry gives up on it after this long.
+const READ_LIMIT = 15_000;
 
 async function open(): Promise<Db> {
   const url = env.SUPABASE_DATABASE_URL;
@@ -66,16 +71,20 @@ INSERT INTO schema_version (id, hash) VALUES (1, '${SCHEMA_HASH}') ON CONFLICT (
   }
 }
 
+/** Sends the next query to fresh connections. Queries still running on the old ones may finish first. */
+function retire() {
+  const g = globalThis as unknown as { __reachDb?: Promise<Db> };
+  if (pool) void pool.end({ timeout: RETIRE_AFTER_S }).catch(() => {});
+  pool = null;
+  g.__reachDb = undefined;
+  ready = null;
+}
+
 export function db(): Promise<Db> {
   // Keep one handle across Next.js hot reloads in dev. A failed open is not kept, so the next call retries.
   const g = globalThis as unknown as { __reachDb?: Promise<Db> };
   const now = Date.now();
-  if (g.__reachDb && pool && lastUsed && now - lastUsed > STALE_AFTER) {
-    void pool.end({ timeout: 0 }).catch(() => {});
-    pool = null;
-    g.__reachDb = undefined;
-    ready = null;
-  }
+  if (g.__reachDb && pool && lastUsed && now - lastUsed > STALE_AFTER) retire();
   lastUsed = now;
   if (!g.__reachDb) {
     // An open that hangs (no answer from the pooler) fails after OPEN_LIMIT, so the next request retries.
@@ -87,6 +96,38 @@ export function db(): Promise<Db> {
     opening.catch(() => { if (g.__reachDb === opening) { g.__reachDb = undefined; ready = null; } });
   }
   return g.__reachDb;
+}
+
+// Errors that mean the connection died, not that the query was wrong (57P01: the server ended the session).
+const LOST = new Set(['CONNECTION_DESTROYED', 'CONNECTION_CLOSED', 'CONNECTION_ENDED', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', '57P01', 'READ_TIMEOUT']);
+
+function lostConnection(e: unknown): boolean {
+  for (let x = e as { code?: string; cause?: unknown } | undefined; x; x = x.cause as typeof x) {
+    if (x.code && LOST.has(x.code)) return true;
+  }
+  return false;
+}
+
+/**
+ * Runs a read, and runs it once more on fresh connections when its connection died or it hung for `limit` ms.
+ * Only for reads: a write may have gone through before its connection died.
+ */
+export async function withDbRetry<T>(read: () => Promise<T>, limit = READ_LIMIT): Promise<T> {
+  const first = read();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hung = new Promise<never>((_, no) => {
+    timer = setTimeout(() => no(Object.assign(new Error('The database did not answer in time.'), { code: 'READ_TIMEOUT' })), limit);
+  });
+  try {
+    return await Promise.race([first, hung]);
+  } catch (e) {
+    if (!lostConnection(e)) throw e;
+    first.catch(() => {}); // a hung read fails later, when its old connections are cut
+    retire();
+    return read();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export { schema };

@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import { withDbRetry } from './db';
 import { has } from './env';
 import type { Platform } from './seo';
 import { PLATFORMS } from './seo';
@@ -8,7 +9,7 @@ import { downloadUrl } from './storage';
 
 // Everything the screens need, as plain data for client components. Cached per request.
 export const studioData = cache(async () => {
-  const [settings, videos, posts, accounts] = await Promise.all([repo.getSettings(), repo.listVideos(), repo.listPosts(), repo.listAccounts()]);
+  const [settings, videos, posts, accounts] = await withDbRetry(() => Promise.all([repo.getSettings(), repo.listVideos(), repo.listPosts(), repo.listAccounts()]));
   const thumbs: Record<string, string> = {};
   const customThumbs: Record<string, string> = {};
   await Promise.all(videos.map(async (v) => {
