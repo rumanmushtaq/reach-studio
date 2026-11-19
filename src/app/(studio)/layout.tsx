@@ -23,6 +23,8 @@ export default async function StudioLayout({ children }: { children: React.React
     storagePct: Math.min(100, (stored / free) * 100),
   };
   const busy = d.videos.some((v) => videoStatus(v, d.posts.filter((p) => p.videoId === v.id), d.now).busy);
+  // Claude's text shows up within a few seconds of being written, not at the next minute's refresh.
+  const claude = d.videos.some((v) => v.uploadState === 'ready' && !!v.claudeWantedAt);
   return (
     <ToastProvider>
       <div className="app">
@@ -31,7 +33,8 @@ export default async function StudioLayout({ children }: { children: React.React
       </div>
       <BottomBar info={info} />
       <AutoRefresh active={busy} />
-      <AutoRefresh active={!busy} everyMs={60_000} />
+      <AutoRefresh active={!busy && claude} everyMs={10_000} />
+      <AutoRefresh active={!busy && !claude} everyMs={60_000} />
     </ToastProvider>
   );
 }

@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
+import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { addTime, removeTime, saveChannel } from '@/app/actions';
 import { changePassword } from '@/app/auth-actions';
@@ -12,7 +13,6 @@ import {
 import { PLATFORM_NAMES, PLATFORMS, type Links } from '@/lib/seo';
 import { QUARTER_HOURS, timeLabel } from '@/lib/slots';
 import { applyResult, Field, FormError, TextInput } from './forms';
-import { useAction } from './query';
 import { ClaudeCard } from './ClaudeCard';
 import { JobRunnerCard } from './JobRunnerCard';
 import { TwoStepCard } from './TwoStepCard';
@@ -21,7 +21,6 @@ import { PlatformBadge, useToast } from './ui';
 export function SettingsView({ times, channel, niche, links, email, twoStepOn, helperSeenAt, now, latePosts }: { times: string[]; channel: string; niche: string; links: Links; email: string | null; twoStepOn: boolean; helperSeenAt: number | null; now: number; latePosts: number }) {
   const router = useRouter();
   const toast = useToast();
-  const { run, pending } = useAction('Saved');
   const addTimeCall = useMutation({ mutationFn: addTime });
   const removeTimeCall = useMutation({ mutationFn: removeTime });
   const saveChannelCall = useMutation({ mutationFn: saveChannel });
@@ -31,9 +30,17 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
   const chanForm = useForm<ChannelForm>({ resolver: zodResolver(channelSchema), values: { channel, niche, links } });
   const pwForm = useForm<ChangePasswordForm>({ resolver: zodResolver(changePasswordSchema), defaultValues: { current: '', password: '', confirm: '' } });
 
+  // The reload after a time change runs in a transition, so the change stays on screen until the page has it.
+  const [reloadingTimes, startReload] = useTransition();
+  const reloadTimes = () => startReload(() => router.refresh());
   const submitTime = timeForm.handleSubmit(async (v) => {
     const r = await addTimeCall.mutateAsync(v);
-    if (applyResult(timeForm, r)) { toast(r.ok && r.message ? r.message : 'Daily time added'); router.refresh(); }
+    if (applyResult(timeForm, r)) { toast(r.ok && r.message ? r.message : 'Daily time added'); reloadTimes(); }
+  });
+  const dropTime = (t: string) => removeTimeCall.mutate(t, {
+    onSuccess: (r) => toast(r.ok ? r.message ?? 'Daily time removed' : r.error),
+    onError: (err) => toast(err instanceof Error ? err.message : 'Could not remove it'),
+    onSettled: reloadTimes,
   });
   const submitChannel = chanForm.handleSubmit(async (v) => {
     const r = await saveChannelCall.mutateAsync(v);
@@ -45,10 +52,10 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
   });
 
   // Show a change to the daily times at once, while the server saves it.
-  const adding = addTimeCall.isPending ? addTimeCall.variables?.time : undefined;
-  const removing = removeTimeCall.isPending ? removeTimeCall.variables : undefined;
+  const adding = (addTimeCall.isPending || reloadingTimes) && addTimeCall.data?.ok !== false ? addTimeCall.variables?.time : undefined;
+  const removing = (removeTimeCall.isPending || reloadingTimes) && removeTimeCall.data?.ok !== false ? removeTimeCall.variables : undefined;
   const shownTimes = [...new Set([...times, ...(adding ? [adding] : [])])].filter((t) => t !== removing).sort();
-  const busyTimes = addTimeCall.isPending || removeTimeCall.isPending;
+  const busyTimes = addTimeCall.isPending || removeTimeCall.isPending || reloadingTimes;
 
   const ce = chanForm.formState.errors;
   const pe = pwForm.formState.errors;
@@ -65,7 +72,7 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
         <div className="timechips">
           {shownTimes.map((t) => (
             <span className={`timechip ${t === adding ? 'pending' : ''}`} key={t}>{timeLabel(t)}
-              <button aria-label={`Remove ${timeLabel(t)}`} disabled={shownTimes.length < 2 || pending || busyTimes} onClick={() => run(() => removeTimeCall.mutateAsync(t))}>×</button>
+              <button aria-label={`Remove ${timeLabel(t)}`} disabled={shownTimes.length < 2 || busyTimes} onClick={() => dropTime(t)}>×</button>
             </span>
           ))}
         </div>

@@ -65,7 +65,7 @@ export function VideoDetail(props: Props) {
           <h1>{video.name}</h1>
           <div className="small muted">
             {video.shape === 'vertical' ? 'Vertical' : 'Horizontal'}{video.duration ? ` · ${len(video.duration)}` : ''} · added {formatSlot(video.createdAt)}
-            {video.seoAt ? ` · SEO ${video.seoSource === 'claude' ? 'by Claude' : 'basic draft'}` : ''}
+            {video.seoAt ? ` · SEO ${video.seoSource === 'claude' ? `by Claude, ${formatSlot(video.seoAt)}` : 'basic draft'}` : ''}
             {video.fileDeletedAt ? ' · file cleaned up after posting' : ''}
           </div>
         </div>
