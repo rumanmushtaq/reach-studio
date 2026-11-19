@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: 24
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        # Newer npm skips install scripts unless allowed; Claude Code's sets up its program.
+        run: |
+          npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
+          claude --version
       - name: Write SEO for waiting videos
         run: node scripts/claude-helper.mjs --once
