@@ -26,10 +26,11 @@ you to create the account; no password goes in the settings files.
 Behind the screens:
 
 1. The browser reads each video, takes 4 frames and a thumbnail, and uploads straight to storage.
-2. The studio writes a basic SEO draft at once, so the video never waits. Then the **Claude helper** on
-   your laptop (`npm run claude-helper`) picks the video up: Claude Code, signed in with your Claude
-   account, looks at the frames and researches the market on the web: what parents and kids search right
-   now, the titles and tags of the top channels in your niche, trending hashtags on Shorts, TikTok and
+2. The studio writes a basic SEO draft at once, so the video never waits, and starts the **Claude helper**
+   on GitHub Actions (or on your laptop with `npm run claude-helper`). The helper looks at the whole video:
+   a frame every few seconds from start to end, what is said in it (speech to text with Whisper), and what
+   people type into YouTube search for related phrases. Claude Code, signed in with your Claude account,
+   reads all of that and researches the market on the web: what parents and kids search right now, the titles and tags of the top channels in your niche, trending hashtags on Shorts, TikTok and
    Reels, and festivals coming up. Then it writes Urdu + English text for each platform (a few minutes).
    Its findings show on the video page under **Market research by Claude**. It replaces the draft if posting has not started.
    Your own edits to the text cancel a waiting rewrite.

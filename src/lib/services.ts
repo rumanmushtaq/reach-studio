@@ -37,20 +37,29 @@ async function postingStarted(videoId: string): Promise<boolean> {
 
 const TOO_LATE = 'Posting started before Claude wrote it, so the basic draft was used.';
 
-/** Jobs for the Claude helper: the request text and links to the frames. */
-export async function helperJobs(now: number): Promise<{ id: string; name: string; prompt: string; frames: string[] }[]> {
+export type HelperJob = {
+  id: string; name: string; prompt: string;
+  frames: string[]; // the few frames taken when the video was added, used when the video cannot be read
+  video: string | null; // a link to the video file, so the helper can look at all of it
+  durationSec: number | null; niche: string; channel: string;
+};
+
+/** Jobs for the Claude helper: the request text and links to the video and its frames. */
+export async function helperJobs(now: number): Promise<HelperJob[]> {
   await repo.helperSeen(now);
   const settings = await repo.getSettings();
   // Drop rewrites that came too late first, so they never take the helper's turn.
   for (const v of await repo.listVideos()) {
     if (v.claudeWantedAt && await postingStarted(v.id)) await repo.finishClaudeJob(v.id, { seoNote: TOO_LATE });
   }
-  const jobs = [];
+  const jobs: HelperJob[] = [];
   for (const v of await repo.claimClaudeJobs(now, 2)) {
     const frames = await Promise.all(v.frameKeys.map((k) => downloadUrl(k, 3600)));
     jobs.push({
       id: v.id, name: v.name, frames,
-      prompt: seoPrompt({ name: v.name, note: v.note, shape: v.shape, durationSec: v.duration, channel: settings.channel, niche: settings.niche, frames: frames.length }),
+      video: v.fileDeletedAt ? null : await downloadUrl(v.fileKey, 3600),
+      durationSec: v.duration, niche: settings.niche, channel: settings.channel,
+      prompt: seoPrompt({ name: v.name, note: v.note, shape: v.shape, durationSec: v.duration, channel: settings.channel, niche: settings.niche }),
     });
   }
   return jobs;

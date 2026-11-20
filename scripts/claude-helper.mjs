@@ -7,10 +7,12 @@
 //
 // `--once`: do every waiting video, then exit (non-zero when the studio cannot be reached or a video failed).
 //
-// It asks the studio for videos waiting for Claude about once a minute, saves their frames to a
-// temporary folder, runs `claude -p` there (it may only read files, search the web and read web pages to
-// research the market), and sends
-// the answer back. Until it does, videos use the studio's basic SEO draft.
+// It asks the studio for videos waiting for Claude about once a minute, prepares a temporary folder with
+// frames from the whole video, what is said in it and YouTube search suggestions (video-analysis.mjs),
+// runs `claude -p` there (it may only read files, search the web and read web pages to research the
+// market), and sends the answer back. Until it does, videos use the studio's basic SEO draft.
+// Speech to text needs ffmpeg and Python with scripts/requirements-transcribe.txt; HELPER_PYTHON picks
+// the Python, HELPER_TRANSCRIBE=off skips it.
 //
 // Settings (from .env.local or the environment):
 //   HELPER_STUDIO_URL  the studio address, e.g. https://reach-studio.vercel.app (default: APP_URL)
@@ -18,9 +20,10 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { prepare } from './video-analysis.mjs';
 
 if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 const STUDIO = (process.env.HELPER_STUDIO_URL || process.env.APP_URL || '').replace(/\/$/, '');
@@ -99,12 +102,10 @@ function seoFrom(output) {
 async function work(job) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'reach-claude-'));
   try {
-    for (const [i, url] of job.frames.entries()) {
-      const res = await fetch(url);
-      if (res.ok) await writeFile(path.join(dir, `frame-${i + 1}.jpg`), Buffer.from(await res.arrayBuffer()));
-    }
+    log(`Looking at "${job.name}"…`);
+    const files = await prepare(job, dir, log);
     log(`Writing SEO for "${job.name}"…`);
-    const seo = seoFrom(await runClaude(job.prompt, dir));
+    const seo = seoFrom(await runClaude(`${job.prompt}\n\n${files}`, dir));
     const { result } = await studio(`/api/helper/jobs/${job.id}`, { method: 'POST', body: JSON.stringify({ seo }) });
     log(result === 'saved' ? `Done: "${job.name}"` : `Not used for "${job.name}" (posting had started, or you edited it)`);
     return true;

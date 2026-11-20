@@ -258,10 +258,12 @@ describe('job runner', { timeout: 120_000 }, () => {
     await svc.runSeo('v5');
     expect((await repo.getVideo('v5'))!).toMatchObject({ seoSource: 'draft', claudeWantedAt: START });
 
-    // The helper takes the job: a prompt naming the frame file, and a link to fetch it.
+    // The helper takes the job: the prompt, a link to the whole video, its length, and the frames taken on upload.
     const jobs = await svc.helperJobs(START);
     const job = jobs.find((j) => j.id === 'v5')!;
-    expect(job.prompt).toContain('frame-1.jpg');
+    expect(job.video).toContain('videos/v5/video.mp4');
+    expect(job.durationSec).toBe(45);
+    expect(job.prompt).toContain('Files prepared from the video');
     expect(job.prompt).toContain('Bunty Bakes a Cake');
     expect(job.prompt).toContain('research the market');
     expect(job.frames).toHaveLength(1);
