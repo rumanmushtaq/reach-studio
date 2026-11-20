@@ -7,7 +7,7 @@ import { AuthError, PublishError, type PostJob } from './types';
 
 // A fake YouTube API: records calls, answers like Google does.
 const yt = {
-  videos: { insert: vi.fn(), update: vi.fn() },
+  videos: { insert: vi.fn(), update: vi.fn(), list: vi.fn() },
   playlists: { list: vi.fn(), insert: vi.fn() },
   playlistItems: { insert: vi.fn() },
   thumbnails: { set: vi.fn() },
@@ -42,6 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   yt.videos.insert.mockResolvedValue({ data: { id: 'yt123' } });
   yt.videos.update.mockResolvedValue({ data: {} });
+  yt.videos.list.mockResolvedValue({ data: { items: [{ status: { privacyStatus: 'public', uploadStatus: 'processed' } }] } });
   yt.playlists.list.mockResolvedValue({ data: { items: [{ id: 'pl1', snippet: { title: 'Urdu Cartoon Stories' } }] } });
   yt.playlistItems.insert.mockResolvedValue({ data: {} });
   yt.thumbnails.set.mockResolvedValue({ data: {} });
@@ -86,6 +87,7 @@ describe('YouTube', () => {
   });
 
   it('publishes at once when the slot is too close to schedule, with a Shorts link for short vertical videos', async () => {
+    yt.videos.insert.mockResolvedValueOnce({ data: { id: 'yt123', status: { privacyStatus: 'public' } } });
     const r = await createYouTubePublisher().step(job({}, { slotAt: NOW + 5 * MINUTE, shape: 'vertical', duration: 40 }), ctx);
     expect(r).toEqual({ state: 'live', externalId: 'yt123', url: 'https://youtube.com/shorts/yt123' });
     expect(yt.videos.insert.mock.calls[0][0].requestBody.status.privacyStatus).toBe('public');
@@ -98,7 +100,40 @@ describe('YouTube', () => {
 
     const atSlot = { ...scheduled, now: SLOT };
     expect(await createYouTubePublisher().step(atSlot, ctx)).toEqual({ state: 'live', externalId: 'yt123', url: 'https://youtu.be/yt123' });
+    expect(yt.videos.list.mock.calls[0][0]).toMatchObject({ part: ['status'], id: ['yt123'] });
     expect(yt.videos.update).toHaveBeenCalledTimes(1);
+  });
+
+  const atSlot = (now = SLOT) => ({ ...job({ state: 'scheduled', externalId: 'yt123', url: 'https://youtu.be/yt123' }), now });
+  const youtubeSays = (status: object | null) => yt.videos.list.mockResolvedValue({ data: { items: status ? [{ status }] : [] } });
+
+  it('checks again in a few minutes when YouTube has not made it public yet', async () => {
+    youtubeSays({ privacyStatus: 'private', publishAt: new Date(SLOT).toISOString(), uploadStatus: 'processed' });
+    expect(await createYouTubePublisher().step(atSlot(), ctx)).toEqual({ state: 'scheduled', runAt: SLOT + 5 * MINUTE, externalId: 'yt123', url: 'https://youtu.be/yt123' });
+  });
+
+  it('says so when YouTube kept the video private, instead of calling it live', async () => {
+    youtubeSays({ privacyStatus: 'private', uploadStatus: 'processed' }); // YouTube dropped the publish time
+    const e = await createYouTubePublisher().step(atSlot(), ctx).catch((x) => x);
+    expect(e).toBeInstanceOf(PublishError);
+    expect(e.retryable).toBe(false);
+    expect(e.message).toContain('YouTube kept this video private');
+
+    youtubeSays({ privacyStatus: 'private', publishAt: new Date(SLOT).toISOString(), uploadStatus: 'processed' });
+    expect((await createYouTubePublisher().step(atSlot(SLOT + 45 * MINUTE), ctx).catch((x) => x)).message).toContain('YouTube kept this video private');
+  });
+
+  it('says so when YouTube rejected the video or it was deleted', async () => {
+    youtubeSays({ privacyStatus: 'private', uploadStatus: 'rejected', rejectionReason: 'duplicate' });
+    expect((await createYouTubePublisher().step(atSlot(), ctx).catch((x) => x)).message).toContain('rejected');
+    youtubeSays(null);
+    expect((await createYouTubePublisher().step(atSlot(), ctx).catch((x) => x)).message).toContain('no longer on YouTube');
+  });
+
+  it('does not call an instant upload live when YouTube made it private', async () => {
+    yt.videos.insert.mockResolvedValueOnce({ data: { id: 'yt123', status: { privacyStatus: 'private' } } });
+    const e = await createYouTubePublisher().step(job({}, { slotAt: NOW + 5 * MINUTE }), ctx).catch((x) => x);
+    expect(e.message).toContain('YouTube kept this video private');
   });
 
   it('maps Google errors: expired sign-in, daily quota, server trouble, bad request', async () => {

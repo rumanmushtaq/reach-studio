@@ -98,6 +98,25 @@ async function addToPlaylist(yt: youtube_v3.Youtube, videoId: string, title: str
   }
 }
 
+// YouTube makes every video uploaded through an app private until Google has audited that app.
+const KEPT_PRIVATE = 'YouTube kept this video private, so it is not live. YouTube does this to videos uploaded by apps that Google has not audited yet. Open it in YouTube Studio and set it to Public. To stop it happening, apply for the YouTube API audit: https://support.google.com/youtube/contact/yt_api_form';
+// How long after the slot YouTube may take to publish before the studio calls the video stuck.
+const PUBLISH_GRACE = 30 * MINUTE;
+
+/** Whether YouTube really published the video: live, not yet (check again soon), or why not. */
+async function publishedState(yt: youtube_v3.Youtube, id: string, slotAt: number, now: number): Promise<'live' | 'soon'> {
+  const { data } = await yt.videos.list({ part: ['status'], id: [id] });
+  const st = data.items?.[0]?.status;
+  if (!st) throw new PublishError('This video is no longer on YouTube. It may have been deleted in YouTube Studio.', false);
+  if (st.uploadStatus === 'rejected' || st.uploadStatus === 'failed') {
+    const why = st.rejectionReason ?? st.failureReason;
+    throw new PublishError(`YouTube ${st.uploadStatus} this video${why ? ` (${why})` : ''}. See YouTube Studio.`, false);
+  }
+  if (st.privacyStatus === 'public' || st.privacyStatus === 'unlisted') return 'live';
+  if (st.publishAt && now < slotAt + PUBLISH_GRACE) return 'soon';
+  throw new PublishError(KEPT_PRIVATE, false);
+}
+
 /** Best effort: YouTube allows custom thumbnails only on verified channels. */
 async function setThumbnail(yt: youtube_v3.Youtube, videoId: string, open: PostJob['openThumb']): Promise<void> {
   if (!open) return;
@@ -139,7 +158,9 @@ export function createYouTubePublisher(): Publisher {
           const url = isShort ? `https://youtube.com/shorts/${id}` : `https://youtu.be/${id}`;
           await addToPlaylist(yt, id, seo.playlist).catch(() => undefined);
           await setThumbnail(yt, id, job.openThumb);
-          return schedule ? { state: 'scheduled', runAt: video.slotAt, externalId: id, url } : { state: 'live', externalId: id, url };
+          if (schedule) return { state: 'scheduled', runAt: video.slotAt, externalId: id, url };
+          if (res.data.status?.privacyStatus === 'private') throw new PublishError(KEPT_PRIVATE, false);
+          return { state: 'live', externalId: id, url };
         }
 
         // Uploaded early. Before the slot: keep YouTube's publish time in step with the studio (the slot may have moved).
@@ -152,7 +173,8 @@ export function createYouTubePublisher(): Publisher {
           });
           return { state: 'scheduled', runAt: video.slotAt, externalId: id, url: post.url };
         }
-        // At the slot YouTube has published it. Comments are off on made-for-kids videos, so no first comment.
+        // At the slot YouTube publishes it itself; check it did. Comments are off on made-for-kids videos.
+        if (await publishedState(yt, id, video.slotAt, now) === 'soon') return { state: 'scheduled', runAt: now + 5 * MINUTE, externalId: id, url: post.url };
         return { state: 'live', externalId: id, url: post.url };
       } catch (err) {
         throw mapGoogleError(err);
