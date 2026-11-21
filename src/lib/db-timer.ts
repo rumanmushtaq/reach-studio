@@ -23,9 +23,9 @@ export async function startDbTimer(origin: string): Promise<void> {
   await d.execute(sql`create extension if not exists pg_cron`);
   await d.execute(sql`create extension if not exists pg_net with schema extensions`);
   // format() quotes the address and secret, so neither can break out of the command.
-  await d.execute(sql`select cron.schedule(${JOB}, ${EVERY}, format(
+  await d.execute(sql`select cron.schedule(${JOB}::text, ${EVERY}::text, format(
     'select net.http_get(url := %L, headers := jsonb_build_object(''Authorization'', %L), timeout_milliseconds := 300000)',
-    ${`${origin.replace(/\/$/, '')}/api/cron/tick`}, ${`Bearer ${env.CRON_SECRET}`}))`);
+    ${`${origin.replace(/\/$/, '')}/api/cron/tick`}::text, ${`Bearer ${env.CRON_SECRET}`}::text))`);
 }
 
 /** Whether the timer is on, and how its last runs and the studio's answers went. */
