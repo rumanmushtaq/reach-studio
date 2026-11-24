@@ -5,9 +5,10 @@
   if (!input) return;
   const { job } = await chrome.runtime.sendMessage({ type: 'claim-job' }).catch(() => ({ job: null }));
   if (!job) return;
+  const saveVideo = (j, filename) => chrome.runtime.sendMessage({ type: 'save-video', url: j.videoUrl, filename });
   try {
-    await reachFill.fill(job, input);
+    await reachFill.fill(job, input, { saveVideo });
   } catch (e) {
-    reachFill.note(`${e.message}. Add the video yourself.`, 'bad');
+    reachFill.note(`${e.message}. Click "Copy details for Claude" and send it.`, 'bad');
   }
 })();

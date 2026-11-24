@@ -10,6 +10,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     });
     return false;
   }
+  if (msg?.type === 'save-video' && typeof msg.url === 'string' && msg.url.startsWith('https://')) {
+    // Plan B when TikTok refuses the added video: save it, so the owner can pick it with TikTok's button.
+    const filename = String(msg.filename || 'reach-video.mp4').replace(/[\\/:*?"<>|]+/g, '-');
+    chrome.downloads.download({ url: msg.url, filename, conflictAction: 'uniquify' }, (id) => reply({ id: id ?? null }));
+    return true;
+  }
   if (msg?.type === 'claim-job' && sender.tab?.id !== undefined) {
     // The first frame of the tab that finds the upload form takes the job; nobody else gets it.
     // A fast page can ask before the job is saved, so look again for a few seconds.
