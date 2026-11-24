@@ -1,7 +1,7 @@
-// Fills TikTok's upload page: puts the video in its file picker and the caption in its editor. It never
-// presses Post: the owner checks and posts, so TikTok sees a person posting, not a bot.
-// When TikTok refuses the video added this way, the helper saves it to Downloads, the owner picks it with
-// TikTok's own button, and the helper fills the caption again. Shared by tiktok.js, and used by the tests.
+// Helps post a Reach Studio video on TikTok's upload page. TikTok breaks when an extension slips a file into
+// its picker, so the helper saves the video to Downloads, the owner picks it with TikTok's own button, and
+// the helper then writes Claude's caption. It never presses Post: the owner checks and posts, so TikTok
+// sees a person posting, not a bot. Shared by tiktok.js, and used by the tests.
 
 const reachFill = (() => {
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,26 +27,7 @@ const reachFill = (() => {
     [...document.querySelectorAll('.public-DraftEditor-content[contenteditable="true"]')].find(visible)
     ?? [...document.querySelectorAll('[contenteditable="true"]')].find(visible) ?? null;
 
-  /** TikTok's own message when an upload fails. */
-  const uploadFailed = () => /something went wrong|re-upload this file|couldn.t upload|upload failed/i.test(document.body?.innerText ?? '');
-
   const fileName = (job) => (/\.(mp4|mov|webm)$/i.test(job.fileName) ? job.fileName : `${job.fileName || 'video'}.mp4`);
-
-  /** Downloads the video and gives it to the page's file picker, as if the owner had chosen it. */
-  async function putVideo(input, job) {
-    const res = await fetch(job.videoUrl);
-    if (!res.ok) throw new Error(`Could not download the video (${res.status})`);
-    const blob = await res.blob();
-    const file = new File([blob], fileName(job), { type: blob.type.startsWith('video/') ? blob.type.split(';')[0] : 'video/mp4', lastModified: Date.now() });
-    const files = new DataTransfer();
-    files.items.add(file);
-    input.files = files.files;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    step(`video added: ${file.name}, ${file.size} bytes, ${file.type}`);
-    return file;
-  }
-
   const flat = (s) => s.replace(/\s+/g, ' ').trim();
 
   /** Replaces the caption. Typing first; if the editor ignores it, pasting, which TikTok's editor accepts. */
@@ -74,7 +55,7 @@ const reachFill = (() => {
     return ok;
   }
 
-  /** A small note in the corner saying what the helper is doing, with a button to copy what happened. */
+  /** A small note in the corner saying what to do next, with a button to copy what happened. */
   function note(text, tone = 'info') {
     step(`note: ${text}`);
     let box = document.getElementById('reach-tiktok-note');
@@ -98,7 +79,7 @@ const reachFill = (() => {
         copy.textContent = 'Copied';
       };
       box.append(msg, copy);
-      document.body.append(box);
+      document.documentElement.append(box); // outside TikTok's own page tree, so its app never sees it
     }
     box.style.background = tone === 'done' ? '#0f7b4a' : tone === 'bad' ? '#b42318' : '#1d2433';
     box.querySelector('#reach-tiktok-msg').textContent = `Reach Studio: ${text}`;
@@ -115,60 +96,45 @@ const reachFill = (() => {
       `browser: ${navigator.userAgent}`,
       `file picker: ${videoInput() ? `yes (accept=${videoInput().accept})` : 'no'}`,
       `caption box: ${editor ? `${editor.className || editor.tagName} "${flat(editor.innerText).slice(0, 60)}"` : 'none'}`,
-      `TikTok error shown: ${uploadFailed() ? 'yes' : 'no'}`,
       ...log,
       `page text: ${page.slice(0, 1500)}`,
     ].join('\n');
   }
 
-  /** After a video goes in: TikTok's error, or its caption box (null when neither shows in time). */
-  async function outcome(timeoutMs) {
-    return waitFor(() => (uploadFailed() ? 'failed' : captionEditor() ? 'editor' : null), timeoutMs);
-  }
+  /** Resolves when the owner picks a file in any of TikTok's file pickers. */
+  const ownerPicks = () => new Promise((resolve) => {
+    document.addEventListener('change', function picked(e) {
+      if (e.target instanceof HTMLInputElement && e.target.type === 'file' && e.target.files?.length) {
+        document.removeEventListener('change', picked, true);
+        step(`owner picked ${e.target.files[0].name}`);
+        resolve();
+      }
+    }, true);
+  });
 
-  /** Fills the caption once TikTok shows its box and has written the file name into it. */
-  async function captionWhenReady(job, editorTimeoutMs) {
+  /** The whole job: save the video, wait for the owner to pick it, then write the caption. */
+  async function fill(job, { editorTimeoutMs = 120_000, saveVideo = async () => {} } = {}) {
+    const picked = ownerPicks(); // listen first, in case the owner is quick
+    note(`Saving "${job.name}" to your Downloads…`);
+    await saveVideo(job, fileName(job));
+    note(`Saved in your Downloads as "${fileName(job)}". Click "Select video" and choose it. The caption fills by itself after.`);
+    await picked;
+    note('Got it. Waiting for TikTok to show the caption box…');
     const editor = await waitFor(captionEditor, editorTimeoutMs);
-    if (!editor) { note('TikTok did not show the caption box. Paste the caption yourself (it is copied).', 'bad'); await navigator.clipboard?.writeText(job.caption).catch(() => {}); return false; }
+    if (!editor) {
+      await navigator.clipboard?.writeText(job.caption).catch(() => {});
+      note('TikTok did not show the caption box. The caption is copied: paste it yourself.', 'bad');
+      return false;
+    }
     await pause(1500); // TikTok first writes the file name into the caption; replace it after that
-    if (uploadFailed()) return 'failed';
-    const ok = await putCaption(captionEditor() ?? editor, job.caption);
-    if (!ok) { note('Could not write the caption. Paste it yourself (it is copied).', 'bad'); await navigator.clipboard?.writeText(job.caption).catch(() => {}); return false; }
+    if (!(await putCaption(captionEditor() ?? editor, job.caption))) {
+      await navigator.clipboard?.writeText(job.caption).catch(() => {});
+      note('Could not write the caption. It is copied: paste it yourself.', 'bad');
+      return false;
+    }
     note('Ready. Check the video and caption, then press Post.', 'done');
     return true;
   }
 
-  /** Plan B: save the video to Downloads; when the owner picks it with TikTok's button, fill the caption. */
-  async function handOver(job, editorTimeoutMs, saveVideo) {
-    step('TikTok refused the added video; saving it for the owner');
-    await saveVideo(job, fileName(job));
-    note(`TikTok did not take the video automatically. It is saved in your Downloads as "${fileName(job)}". Click "Re-upload this file" (or "Select video") and choose it. The caption fills by itself after.`, 'bad');
-    // The helper's own add happened before this listens, so the next file picked is the owner's.
-    await new Promise((resolve) => {
-      document.addEventListener('change', function picked(e) {
-        if (e.target instanceof HTMLInputElement && e.target.type === 'file' && e.target.files?.length) {
-          document.removeEventListener('change', picked, true);
-          step(`owner picked ${e.target.files[0].name}`);
-          resolve();
-        }
-      }, true);
-    });
-    note('Got it. Waiting for TikTok to show the caption box…');
-    await pause(3000); // the old error goes away while TikTok takes the new file
-    return captionWhenReady(job, editorTimeoutMs);
-  }
-
-  /** The whole fill, step by step, with what is happening shown in the corner. */
-  async function fill(job, input, { editorTimeoutMs = 120_000, saveVideo = async () => {} } = {}) {
-    note(`Adding "${job.name}"…`);
-    await putVideo(input, job);
-    note('Video added. Waiting for TikTok to take it…');
-    const first = await outcome(editorTimeoutMs);
-    if (first === 'failed') return handOver(job, editorTimeoutMs, saveVideo);
-    if (!first) { note('TikTok did not react to the video. Click "Copy details for Claude" and send it.', 'bad'); return false; }
-    const result = await captionWhenReady(job, editorTimeoutMs);
-    return result === 'failed' ? handOver(job, editorTimeoutMs, saveVideo) : result;
-  }
-
-  return { waitFor, videoInput, captionEditor, uploadFailed, putVideo, putCaption, note, details, fill };
+  return { waitFor, videoInput, captionEditor, putCaption, note, details, fill };
 })();

@@ -19,22 +19,13 @@ const clip = path.join(dir, 'clip.mp4');
 spawnSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=320x240:rate=10', clip]);
 const bytes = await readFile(clip);
 
-// Stand-ins for TikTok's upload page: a file picker, then a caption editor that starts with the file name.
-// "picky" acts like TikTok refusing the video the helper adds and taking the one the person picks next.
-let mode = 'accepts';
-const tiktokPage = () => `<!doctype html><body><input type="file" accept="video/*" id="f">
-<p id="err" style="display:none">Something went wrong <a href="#">Re-upload this file</a></p>
+// A stand-in for TikTok's upload page: a file picker, then a caption editor that starts with the file name.
+const tiktokPage = `<!doctype html><body><input type="file" accept="video/*" id="f">
 <div id="cap" contenteditable="true" style="display:none;min-height:40px;border:1px solid #999"></div>
 <script>
   document.getElementById('f').addEventListener('change', (e) => {
     const cap = document.getElementById('cap');
-    const refuse = ${mode === 'picky'} && !window.picked;
-    window.picked = true; // the first file is the helper's; the next one is the person's
-    setTimeout(() => {
-      document.getElementById('err').style.display = refuse ? 'block' : 'none';
-      cap.style.display = 'block';
-      cap.textContent = e.target.files[0].name.replace(/\\.mp4$/, '');
-    }, 500);
+    setTimeout(() => { cap.style.display = 'block'; cap.textContent = e.target.files[0].name.replace(/\\.mp4$/, ''); }, 500);
   });
 </script></body>`;
 const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><script>
@@ -50,7 +41,7 @@ const context = await chromium.launchPersistentContext(await mkdtemp(path.join(o
 });
 const fail = async (msg) => { console.error(`FAIL: ${msg}`); await context.close(); process.exit(1); };
 try {
-  await context.route('https://www.tiktok.com/**', (r) => r.fulfill({ contentType: 'text/html', body: tiktokPage() }));
+  await context.route('https://www.tiktok.com/**', (r) => r.fulfill({ contentType: 'text/html', body: tiktokPage }));
   await context.route('https://reach-studio-five.vercel.app/**', (r) => r.fulfill({ contentType: 'text/html', body: studioPage }));
   await context.route(`${VIDEO}*`, (r) => r.fulfill({ contentType: 'video/mp4', body: bytes, headers: { 'access-control-allow-origin': '*' } }));
 
@@ -72,35 +63,23 @@ try {
   // Playwright cannot stand in for the first load of a tab an extension opens, so load it again under the stand-in.
   await tiktok.waitForLoadState().catch(() => {});
   await tiktok.goto('https://www.tiktok.com/tiktokstudio/upload?from=reach-studio');
-  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Ready")', { timeout: 20_000 })
-    .catch(async () => fail(`no "Ready" note: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
   if (!tiktok.url().startsWith('https://www.tiktok.com/tiktokstudio/upload')) await fail(`opened ${tiktok.url()}`);
-  const file = await tiktok.evaluate(() => { const f = document.getElementById('f').files[0]; return { name: f.name, size: f.size, type: f.type }; });
-  if (file.name !== 'Ghulo_Ep01.mp4' || file.size !== bytes.length || file.type !== 'video/mp4') await fail(`file is ${JSON.stringify(file)}`);
-  console.log(`ok  video added: ${file.name}, ${file.size} bytes`);
-  const caption = await tiktok.evaluate(() => document.getElementById('cap').innerText);
-  if (caption.replace(/\s+/g, ' ').trim() !== CAPTION.replace(/\s+/g, ' ').trim()) await fail(`caption is ${JSON.stringify(caption)}`);
-  console.log('ok  caption replaced the file name');
-  await tiktok.close();
-
-  // TikTok refuses the added video: the helper saves it, the person picks it, the caption fills.
-  mode = 'picky';
-  const [picky] = await Promise.all([context.waitForEvent('page'), studio.click('#go')]);
-  await picky.waitForLoadState().catch(() => {});
-  await picky.goto('https://www.tiktok.com/tiktokstudio/upload?from=reach-studio');
-  await picky.waitForSelector('#reach-tiktok-note:has-text("saved in your Downloads")', { timeout: 20_000 })
-    .catch(async () => fail(`no Downloads note: ${await picky.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Saved in your Downloads")', { timeout: 20_000 })
+    .catch(async () => fail(`no Downloads note: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  if (await tiktok.evaluate(() => document.getElementById('f').files.length)) await fail('touched TikTok\'s file picker');
+  console.log('ok  leaves TikTok\'s file picker to the person');
   const [worker] = context.serviceWorkers();
   // Playwright keeps downloads under its own names, so check the link that was saved.
   const saved = await worker.evaluate(() => new Promise((r) => chrome.downloads.search({}, (items) => r(items.map((d) => d.url)))));
   if (!saved.some((u) => u.startsWith(VIDEO))) await fail(`video not saved: ${JSON.stringify(saved)}`);
-  console.log('ok  refused video saved to Downloads');
-  await picky.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
-  await picky.waitForSelector('#reach-tiktok-note:has-text("Ready")', { timeout: 20_000 })
-    .catch(async () => fail(`no "Ready" after picking: ${await picky.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
-  const caption2 = await picky.evaluate(() => document.getElementById('cap').innerText);
-  if (caption2.replace(/\s+/g, ' ').trim() !== CAPTION.replace(/\s+/g, ' ').trim()) await fail(`caption after picking is ${JSON.stringify(caption2)}`);
-  console.log('ok  caption filled after the person picked the video');
+  console.log('ok  video saved to Downloads');
+
+  await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
+  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Ready")', { timeout: 20_000 })
+    .catch(async () => fail(`no "Ready" after picking: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  const caption = await tiktok.evaluate(() => document.getElementById('cap').innerText);
+  if (caption.replace(/\s+/g, ' ').trim() !== CAPTION.replace(/\s+/g, ' ').trim()) await fail(`caption is ${JSON.stringify(caption)}`);
+  console.log('ok  caption replaced the file name after the person picked the video');
   console.log('PASS');
 } finally {
   await context.close();

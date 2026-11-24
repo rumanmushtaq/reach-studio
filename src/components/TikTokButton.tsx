@@ -7,7 +7,8 @@ import { tiktokJob } from '@/app/actions';
 import { useToast } from './ui';
 
 // Free TikTok posting: the Reach Studio TikTok helper extension (extensions/tiktok-helper) opens TikTok's
-// upload page, adds this video and Claude's caption, and leaves the Post button to the owner. The extension
+// upload page and saves this video to Downloads; the owner picks it, the helper writes Claude's caption, and
+// the owner presses Post. The extension
 // marks the page with data-reach-tiktok so the studio knows it is installed.
 export const TIKTOK_MESSAGE = 'reach-studio:tiktok-post';
 
@@ -25,7 +26,7 @@ export function TikTokButton({ videoId, disabled }: { videoId: string; disabled?
     onSuccess: (r) => {
       if (!r.ok) return toast(r.error);
       window.postMessage({ type: TIKTOK_MESSAGE, job: r.job }, window.location.origin);
-      toast('Opening TikTok. Check the video and caption, then press Post.');
+      toast('Opening TikTok and saving the video to Downloads. Pick it with Select video; the caption fills by itself.');
     },
     onError: (e) => toast(e instanceof Error ? e.message : 'Could not get the video ready'),
   });

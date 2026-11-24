@@ -19,8 +19,9 @@ export function TikTokHelperCard() {
         <span className={`pill ${installed ? 'ok' : ''}`}>{installed ? 'Installed in this browser' : 'Not installed'}</span>
       </div>
       <p className="small muted">
-        Free TikTok posting. On a video page press <b>Post to TikTok</b>: the helper opens TikTok, adds the video and
-        Claude&apos;s caption, and you press <b>Post</b>. It never posts by itself, so TikTok sees you posting.
+        Free TikTok posting. On a video page press <b>Post to TikTok</b>: the helper opens TikTok and saves the video to
+        your Downloads. Click <b>Select video</b> and pick it; the helper writes Claude&apos;s caption, and you press
+        <b>Post</b>. It never posts by itself, so TikTok sees you posting.
       </p>
       <ol className="claude-steps">
         <li>

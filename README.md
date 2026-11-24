@@ -205,8 +205,9 @@ While the app is in development mode it can post to Pages you manage, which cove
 ### 7. TikTok
 
 Free: the **TikTok helper** browser extension (`extensions/tiktok-helper`, steps in **Settings → TikTok
-helper**). On a video page press **Post to TikTok**: it opens TikTok's upload page in your browser, adds the
-video and Claude's caption, and you press Post. TikTok only lets audited apps post publicly and does not audit
+helper**). On a video page press **Post to TikTok**: it opens TikTok's upload page in your browser and saves
+the video to Downloads; you pick it with **Select video** (TikTok breaks when an extension adds the file), the
+helper writes Claude's caption, and you press Post. TikTok only lets audited apps post publicly and does not audit
 personal upload tools, so the helper never presses Post itself. Test: `node extensions/tiktok-helper/test.mjs`.
 
 Paid alternative, fully automatic:
