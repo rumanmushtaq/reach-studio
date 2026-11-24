@@ -24,14 +24,18 @@ export function TikTokHelperCard() {
       </p>
       <ol className="claude-steps">
         <li>
+          <b>Download the helper and unzip it</b>
+          <span className="small muted">Right-click the downloaded file and choose <b>Extract here</b>. You get a folder called <code>reach-tiktok-helper</code>; keep it, Chrome uses it from there.</span>
+          <a className="btn sm" href="/api/tiktok-helper" download style={{ alignSelf: 'flex-start' }}>Download TikTok helper (.zip)</a>
+        </li>
+        <li>
           <b>Open Chrome&apos;s extensions page</b>
           <span className="small muted">Type this in the address bar, then turn on <b>Developer mode</b> (top right).</span>
           <CopyLine text="chrome://extensions" />
         </li>
         <li>
           <b>Load the helper</b>
-          <span className="small muted">Press <b>Load unpacked</b> and choose this folder of the studio&apos;s code:</span>
-          <CopyLine text="reach-studio/extensions/tiktok-helper" />
+          <span className="small muted">Press <b>Load unpacked</b> and choose the <code>reach-tiktok-helper</code> folder from step 1.</span>
         </li>
         <li>
           <b>Sign in to TikTok in the same browser</b>

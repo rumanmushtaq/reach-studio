@@ -7,6 +7,8 @@ const config: NextConfig = {
   experimental: { serverActions: { bodySizeLimit: '2mb' } },
   // The dev-tools badge sits over the rail's Sign out button.
   devIndicators: false,
+  // The TikTok helper download zips these files at request time.
+  outputFileTracingIncludes: { '/api/tiktok-helper': ['./extensions/tiktok-helper/*'] },
   // Free slots now live on Today and in the planner.
   async redirects() { return [{ source: '/free-slots', destination: '/calendar', permanent: false }]; },
 };
