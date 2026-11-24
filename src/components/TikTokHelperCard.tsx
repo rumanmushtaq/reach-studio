@@ -20,8 +20,9 @@ export function TikTokHelperCard() {
       </div>
       <p className="small muted">
         Free TikTok posting. On a video page press <b>Post to TikTok</b>: the helper opens TikTok and saves the video to
-        your Downloads. Click <b>Select video</b> and pick it; the helper writes Claude&apos;s caption, and you press
-        <b>Post</b>. It never posts by itself, so TikTok sees you posting.
+        your Downloads. Click <b>Select video</b> and pick it; the helper writes Claude&apos;s caption and sets the
+        video&apos;s time under <b>Schedule</b>, and you press <b>Schedule</b>. It never posts by itself, so TikTok sees you
+        posting.
       </p>
       <ol className="claude-steps">
         <li>

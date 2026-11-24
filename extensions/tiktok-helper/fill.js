@@ -127,6 +127,88 @@ const reachFill = (() => {
     return `Under "When to post" choose Schedule and set ${job.slotLabel} (Pakistan time), then press Schedule.`;
   }
 
+  const textOf = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const shown = (el) => el && visible(el);
+  const two = (n) => String(n).padStart(2, '0');
+  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+  /** Clicks like a person does: pointer and mouse events, then the click. */
+  function press(el) {
+    el.scrollIntoView({ block: 'center' });
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
+    el.click();
+  }
+
+  /** "November 2026", "Nov 2026" or "2026-11" as a month count, to compare months. */
+  function monthOf(text) {
+    const t = text.toLowerCase();
+    const year = Number(t.match(/\d{4}/)?.[0]);
+    const named = MONTHS.findIndex((m) => t.includes(m.slice(0, 3)));
+    const numbered = Number(t.match(/\d{4}[-/.](\d{1,2})/)?.[1]) - 1;
+    const month = named >= 0 ? named : numbered;
+    return year && month >= 0 ? year * 12 + month : null;
+  }
+
+  /** The visible element whose own text is exactly `text`, inside `root`. */
+  const byText = (text, root = document) =>
+    [...root.querySelectorAll('label, span, div, p, button')].find((el) => shown(el) && textOf(el).toLowerCase() === text.toLowerCase() && [...el.children].every((c) => textOf(c).toLowerCase() !== text.toLowerCase()));
+
+  /** What TikTok's date and time boxes show now. */
+  const scheduleShows = () => [...document.querySelectorAll('[class*="date-picker"], [class*="time-picker"]')]
+    .map((el) => el.querySelector('input')?.value || textOf(el)).join(' ');
+
+  /**
+   * Sets TikTok's "When to post" to Schedule at `at`: the Schedule option, a day in its calendar, then an hour
+   * and minute in its time lists. Only clicks, like a person, and stops at anything unexpected. True when the
+   * boxes then show that date and time. TikTok's picker uses this browser's clock, and so does `at`.
+   */
+  async function schedule(at) {
+    const d = new Date(at);
+    const want = { date: `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`, time: `${two(d.getHours())}:${two(d.getMinutes())}` };
+    const option = byText('Schedule');
+    if (!option) { step('schedule: no Schedule option'); return false; }
+    const radio = option.closest('label')?.querySelector('input[type="radio"]') ?? option.closest('label') ?? option;
+    press(radio);
+    const dateBox = await waitFor(() => [...document.querySelectorAll('[class*="date-picker"]')].find(shown), 5000);
+    if (!dateBox) { step('schedule: no date box after choosing Schedule'); return false; }
+    press(dateBox.querySelector('input') ?? dateBox);
+    await pause(400);
+    for (let i = 0; i < 14; i++) {
+      const title = [...document.querySelectorAll('[class*="month-title"], [class*="month"]')].find((el) => shown(el) && monthOf(textOf(el)) !== null);
+      const showing = title && monthOf(textOf(title));
+      if (!showing) { step('schedule: no month in the calendar'); return false; }
+      const target = d.getFullYear() * 12 + d.getMonth();
+      if (showing === target) break;
+      const arrows = [...document.querySelectorAll('[class*="arrow"]')].filter(shown);
+      if (arrows.length < 2) { step('schedule: no month arrows'); return false; }
+      press(showing < target ? arrows[arrows.length - 1] : arrows[0]);
+      await pause(300);
+    }
+    const day = [...document.querySelectorAll('[class*="day"]')].find((el) => shown(el) && textOf(el) === String(d.getDate()) && !/disabled|invalid|outside|other/i.test(el.className));
+    if (!day) { step(`schedule: day ${d.getDate()} not offered`); return false; }
+    press(day);
+    await pause(400);
+    const timeBox = [...document.querySelectorAll('[class*="time-picker"]')].find(shown);
+    if (!timeBox) { step('schedule: no time box'); return false; }
+    press(timeBox.querySelector('input') ?? timeBox);
+    await pause(400);
+    const pick = (selector, value) => [...document.querySelectorAll(selector)].find((el) => shown(el) && [value, String(Number(value))].includes(textOf(el)));
+    const hour = pick('[class*="timepicker-left"], [class*="hour"]', two(d.getHours()));
+    if (!hour) { step(`schedule: hour ${two(d.getHours())} not offered`); return false; }
+    press(hour);
+    await pause(300);
+    const minute = pick('[class*="timepicker-right"], [class*="minute"]', two(d.getMinutes()));
+    if (!minute) { step(`schedule: minute ${two(d.getMinutes())} not offered (TikTok steps by 5)`); return false; }
+    press(minute);
+    await pause(400);
+    const boxes = scheduleShows();
+    const ok = boxes.includes(want.date) && boxes.includes(want.time);
+    step(ok ? `scheduled ${want.date} ${want.time}` : `schedule boxes show "${boxes}", wanted ${want.date} ${want.time}`);
+    return ok;
+  }
+
   /** Resolves when the owner picks a file in any of TikTok's file pickers. */
   const ownerPicks = () => new Promise((resolve) => {
     document.addEventListener('change', function picked(e) {
@@ -158,9 +240,17 @@ const reachFill = (() => {
       note('Could not write the caption. It is copied: paste it yourself.', 'bad');
       return false;
     }
+    const ahead = job.slotAt ? job.slotAt - Date.now() : 0;
+    if (ahead >= 15 * 60_000 && ahead <= 10 * 24 * 3600_000) {
+      note('Caption added. Setting the schedule time…');
+      if (await schedule(job.slotAt).catch((e) => { step(`schedule: ${e.message}`); return false; })) {
+        note(`Caption added and scheduled for ${job.slotLabel} (Pakistan time). Check them, then press Schedule.`, 'done');
+        return true;
+      }
+    }
     note(`Caption added. ${whenToPost(job)}`, 'done');
     return true;
   }
 
-  return { waitFor, videoInput, captionEditor, putCaption, note, details, whenToPost, fill };
+  return { waitFor, videoInput, captionEditor, putCaption, note, details, whenToPost, schedule, fill };
 })();

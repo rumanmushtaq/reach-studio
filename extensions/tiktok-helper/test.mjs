@@ -13,7 +13,10 @@ const EXT = process.env.TIKTOK_HELPER_DIR || path.dirname(fileURLToPath(import.m
 const STUDIO = 'https://reach-studio-five.vercel.app/videos/test';
 const VIDEO = 'https://res.cloudinary.com/test/video/upload/videos/v1/video';
 const CAPTION = 'Ghulo ki shararat! Remote kahan hai?\n\n#urducartoon #ghulo #kidscartoon';
-const SLOT_AT = Date.now() + 2 * 24 * 3600_000; // two days ahead: TikTok can schedule it
+const SLOT = new Date(Date.now() + Number(process.env.SLOT_DAYS ?? 2) * 24 * 3600_000); SLOT.setHours(8, 45, 0, 0); // SLOT_DAYS=8 checks the calendar moving to another month
+const SLOT_AT = SLOT.getTime();
+const pad = (n) => String(n).padStart(2, '0');
+const SLOT_DATE = `${SLOT.getFullYear()}-${pad(SLOT.getMonth() + 1)}-${pad(SLOT.getDate())}`;
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'reach-tiktok-'));
 const clip = path.join(dir, 'clip.mp4');
@@ -24,6 +27,51 @@ const bytes = await readFile(clip);
 // from a CDN, so this test needs internet) holding the file name, inside an error screen like TikTok's.
 const CDN = 'https://cdn.jsdelivr.net/npm';
 const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><body><input type="file" accept="video/*" id="f"><div id="root"></div>
+<div><div>When to post</div>
+  <label><input type="radio" name="when" checked><span>Now</span></label>
+  <label><input type="radio" name="when" id="sch"><span>Schedule</span></label>
+  <div id="pickers" style="display:none">
+    <div class="date-picker-input"><input id="date" readonly></div>
+    <div class="time-picker-input"><input id="time" readonly></div>
+  </div>
+  <div id="cal" class="calendar-wrapper" style="display:none"><span class="arrow" id="prev">‹</span><span class="month-title" id="mt"></span><span class="arrow" id="next">›</span><div class="days-wrapper" id="days"></div></div>
+  <div id="tp" style="display:none"><div id="hours"></div><div id="mins"></div></div>
+</div>
+<script>
+  // Stand-in for TikTok's schedule picker: a calendar (15 minutes to 10 days ahead) and 5-minute time lists.
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  let view = new Date(); view.setDate(1);
+  const M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function drawCal() {
+    document.getElementById('mt').textContent = M[view.getMonth()] + ' ' + view.getFullYear();
+    const days = document.getElementById('days'); days.innerHTML = '';
+    const last = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (let i = 1; i <= last; i++) {
+      const d = new Date(view.getFullYear(), view.getMonth(), i);
+      const ok = d >= today && d - today <= 10 * 864e5;
+      const el = document.createElement('span'); el.textContent = i; el.className = 'day ' + (ok ? 'valid' : 'disabled');
+      if (ok) el.onclick = () => { document.getElementById('date').value = ymd(d); document.getElementById('cal').style.display = 'none'; };
+      days.append(el, ' ');
+    }
+  }
+  document.getElementById('sch').addEventListener('change', () => {
+    document.getElementById('pickers').style.display = 'block';
+    document.getElementById('date').value = ymd(new Date());
+    document.getElementById('time').value = '10:00';
+  });
+  document.getElementById('date').onclick = () => { document.getElementById('cal').style.display = 'block'; drawCal(); };
+  document.getElementById('prev').onclick = () => { view.setMonth(view.getMonth() - 1); drawCal(); };
+  document.getElementById('next').onclick = () => { view.setMonth(view.getMonth() + 1); drawCal(); };
+  document.getElementById('time').onclick = () => {
+    const tp = document.getElementById('tp'); tp.style.display = 'block';
+    const set = (part, v) => { const [h, m] = document.getElementById('time').value.split(':'); document.getElementById('time').value = part === 'h' ? v + ':' + m : h + ':' + v; };
+    document.getElementById('hours').innerHTML = ''; document.getElementById('mins').innerHTML = '';
+    for (let h = 0; h < 24; h++) { const el = document.createElement('span'); el.className = 'tiktok-timepicker-left'; el.textContent = pad(h); el.onclick = () => set('h', pad(h)); document.getElementById('hours').append(el, ' '); }
+    for (let m = 0; m < 60; m += 5) { const el = document.createElement('span'); el.className = 'tiktok-timepicker-right'; el.textContent = pad(m); el.onclick = () => set('m', pad(m)); document.getElementById('mins').append(el, ' '); }
+  };
+</script>
 <script src="${CDN}/react@16.14.0/umd/react.production.min.js"></script>
 <script src="${CDN}/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
 <script src="${CDN}/immutable@3.8.2/dist/immutable.min.js"></script>
@@ -98,10 +146,11 @@ try {
   console.log('ok  video saved to Downloads');
 
   await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
-  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Caption added")', { timeout: 20_000 })
-    .catch(async () => fail(`no "Caption added" after picking: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
-  if (!(await tiktok.locator('#reach-tiktok-note').textContent()).includes('choose Schedule and set Sat 29 Nov 8:45 AM')) await fail('the note does not give the time to schedule');
-  console.log('ok  the note gives the studio time to schedule');
+  await tiktok.waitForSelector('#reach-tiktok-note:has-text("scheduled for")', { timeout: 30_000 })
+    .catch(async () => fail(`not scheduled: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  const when = await tiktok.evaluate(() => ({ schedule: document.getElementById('sch').checked, date: document.getElementById('date').value, time: document.getElementById('time').value }));
+  if (!when.schedule || when.date !== SLOT_DATE || when.time !== '08:45') await fail(`schedule boxes show ${JSON.stringify(when)}, wanted ${SLOT_DATE} 08:45`);
+  console.log(`ok  scheduled itself for the studio slot: ${when.date} ${when.time}`);
   // The editor's own text, not just what it shows: TikTok crashes when the two differ.
   const caption = await tiktok.evaluate(() => window.draftText());
   if (caption !== CAPTION) await fail(`the editor holds ${JSON.stringify(caption)}`);
