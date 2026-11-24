@@ -91,6 +91,17 @@ const reachFill = (() => {
     return box;
   }
 
+  /** The part of TikTok's page with "When to post", without styles, so its schedule boxes can be filled later. */
+  function scheduleHtml() {
+    const label = [...document.querySelectorAll('body *')].find((el) => el.children.length === 0 && /^\s*when to post\s*$/i.test(el.textContent ?? ''));
+    let box = label;
+    for (let i = 0; box && i < 4; i++) box = box.parentElement; // up to the settings group around it
+    if (!box) return 'not found';
+    const copy = box.cloneNode(true);
+    copy.querySelectorAll('*').forEach((el) => { el.removeAttribute('style'); if (el.tagName === 'svg') el.innerHTML = ''; });
+    return copy.outerHTML.replace(/\s+/g, ' ').slice(0, 6000);
+  }
+
   /** What happened, plus what TikTok shows, to paste to Claude when something goes wrong. */
   function details() {
     const editor = captionEditor();
@@ -103,7 +114,17 @@ const reachFill = (() => {
       `caption box: ${editor ? `${editor.className || editor.tagName} "${flat(editor.innerText).slice(0, 60)}"` : 'none'}`,
       ...log,
       `page text: ${page.slice(0, 1500)}`,
+      `when-to-post html: ${scheduleHtml()}`,
     ].join('\n');
+  }
+
+  /** What to choose under TikTok's "When to post": its schedule takes 15 minutes to 10 days ahead. */
+  function whenToPost(job, now = Date.now()) {
+    if (!job.slotAt || !job.slotLabel) return 'Then press Post.';
+    const ahead = job.slotAt - now;
+    if (ahead < 15 * 60_000) return `Its time (${job.slotLabel}) is now or past, so press Post.`;
+    if (ahead > 10 * 24 * 3600_000) return `Its time (${job.slotLabel}) is over 10 days away, more than TikTok can schedule: post it nearer the day.`;
+    return `Under "When to post" choose Schedule and set ${job.slotLabel} (Pakistan time), then press Schedule.`;
   }
 
   /** Resolves when the owner picks a file in any of TikTok's file pickers. */
@@ -137,9 +158,9 @@ const reachFill = (() => {
       note('Could not write the caption. It is copied: paste it yourself.', 'bad');
       return false;
     }
-    note('Ready. Check the video and caption, then press Post.', 'done');
+    note(`Caption added. ${whenToPost(job)}`, 'done');
     return true;
   }
 
-  return { waitFor, videoInput, captionEditor, putCaption, note, details, fill };
+  return { waitFor, videoInput, captionEditor, putCaption, note, details, whenToPost, fill };
 })();

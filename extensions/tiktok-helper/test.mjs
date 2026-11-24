@@ -13,6 +13,7 @@ const EXT = process.env.TIKTOK_HELPER_DIR || path.dirname(fileURLToPath(import.m
 const STUDIO = 'https://reach-studio-five.vercel.app/videos/test';
 const VIDEO = 'https://res.cloudinary.com/test/video/upload/videos/v1/video';
 const CAPTION = 'Ghulo ki shararat! Remote kahan hai?\n\n#urducartoon #ghulo #kidscartoon';
+const SLOT_AT = Date.now() + 2 * 24 * 3600_000; // two days ahead: TikTok can schedule it
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'reach-tiktok-'));
 const clip = path.join(dir, 'clip.mp4');
@@ -49,7 +50,7 @@ const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><bod
 const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><script>
   addEventListener('message', (e) => { if (e.data?.type === 'reach-studio:tiktok-answer') window.answer = e.data; });
   document.getElementById('go').onclick = () => window.postMessage({ type: 'reach-studio:tiktok-post',
-    job: { name: 'Ghulo Ep01', fileName: 'Ghulo_Ep01.mp4', videoUrl: '${VIDEO}', caption: ${JSON.stringify(CAPTION)} } }, location.origin);
+    job: { name: 'Ghulo Ep01', fileName: 'Ghulo_Ep01.mp4', videoUrl: '${VIDEO}', caption: ${JSON.stringify(CAPTION)}, slotAt: ${SLOT_AT}, slotLabel: 'Sat 29 Nov 8:45 AM' } }, location.origin);
 </script></body>`;
 
 const context = await chromium.launchPersistentContext(await mkdtemp(path.join(os.tmpdir(), 'reach-profile-')), {
@@ -97,8 +98,10 @@ try {
   console.log('ok  video saved to Downloads');
 
   await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
-  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Ready")', { timeout: 20_000 })
-    .catch(async () => fail(`no "Ready" after picking: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Caption added")', { timeout: 20_000 })
+    .catch(async () => fail(`no "Caption added" after picking: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  if (!(await tiktok.locator('#reach-tiktok-note').textContent()).includes('choose Schedule and set Sat 29 Nov 8:45 AM')) await fail('the note does not give the time to schedule');
+  console.log('ok  the note gives the studio time to schedule');
   // The editor's own text, not just what it shows: TikTok crashes when the two differ.
   const caption = await tiktok.evaluate(() => window.draftText());
   if (caption !== CAPTION) await fail(`the editor holds ${JSON.stringify(caption)}`);

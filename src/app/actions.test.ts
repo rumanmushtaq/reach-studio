@@ -55,7 +55,7 @@ describe('Post to TikTok (helper extension)', { timeout: 60_000 }, () => {
     await addVideo('tt', 'waiting');
     await repo.updateVideo('tt', { seo: { ...(await import('@/lib/seo')).draftSeo({ name: 'Gholu', note: '', shape: 'vertical' }), tiktok: { caption: 'Gholu ki shararat!', hashtags: ['#gholu', '#urducartoon'] } } });
     const r = await actions.tiktokJob('tt');
-    expect(r).toEqual({ ok: true, job: { name: 'Gholu', fileName: 'g.mp4', videoUrl: expect.stringContaining('videos/tt/g.mp4'), caption: 'Gholu ki shararat!\n\n#gholu #urducartoon' } });
+    expect(r).toEqual({ ok: true, job: { name: 'Gholu', fileName: 'g.mp4', videoUrl: expect.stringContaining('videos/tt/g.mp4'), caption: 'Gholu ki shararat!\n\n#gholu #urducartoon', slotAt: expect.any(Number), slotLabel: expect.stringMatching(/^\w{3} \d{1,2} \w{3} \d{1,2}:\d{2} (AM|PM)$/) } });
   });
 
   it('says why when the file is gone', async () => {

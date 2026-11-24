@@ -11,7 +11,7 @@ import {
 import * as repo from '@/lib/repo';
 import { normaliseSeo, PLATFORMS, type Platform } from '@/lib/seo';
 import { retryPost } from '@/lib/services';
-import { canBook } from '@/lib/slots';
+import { canBook, formatSlot } from '@/lib/slots';
 import { deletePrefix, deleteKey, downloadUrl, fileSize, uploadTarget } from '@/lib/storage';
 import type { UploadTarget } from '@/lib/browser-video';
 
@@ -98,7 +98,10 @@ export async function saveSeo(videoId: string, seo: unknown): Promise<Result> {
 }
 
 /** What the TikTok helper extension needs to fill TikTok's upload page: the file and Claude's caption. */
-export type TikTokJob = { name: string; fileName: string; videoUrl: string; caption: string };
+export type TikTokJob = {
+  name: string; fileName: string; videoUrl: string; caption: string;
+  slotAt: number | null; slotLabel: string | null; // the video's posting time, to schedule it on TikTok
+};
 
 export async function tiktokJob(videoId: string): Promise<{ ok: true; job: TikTokJob } | { ok: false; error: string }> {
   const video = await repo.getVideo(videoId);
@@ -113,6 +116,8 @@ export async function tiktokJob(videoId: string): Promise<{ ok: true; job: TikTo
       fileName: video.fileName || `${video.name}.mp4`,
       videoUrl: await downloadUrl(video.fileKey, 3600),
       caption: [caption.trim(), hashtags.join(' ')].filter(Boolean).join('\n\n').slice(0, 2200),
+      slotAt: video.slotAt,
+      slotLabel: video.slotAt ? formatSlot(video.slotAt) : null,
     },
   };
 }
