@@ -29,6 +29,7 @@ const tiktokPage = `<!doctype html><body><input type="file" accept="video/*" id=
   });
 </script></body>`;
 const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><script>
+  addEventListener('message', (e) => { if (e.data?.type === 'reach-studio:tiktok-answer') window.answer = e.data; });
   document.getElementById('go').onclick = () => window.postMessage({ type: 'reach-studio:tiktok-post',
     job: { name: 'Ghulo Ep01', fileName: 'Ghulo_Ep01.mp4', videoUrl: '${VIDEO}', caption: ${JSON.stringify(CAPTION)} } }, location.origin);
 </script></body>`;
@@ -64,6 +65,9 @@ try {
   await tiktok.waitForLoadState().catch(() => {});
   await tiktok.goto('https://www.tiktok.com/tiktokstudio/upload?from=reach-studio');
   if (!tiktok.url().startsWith('https://www.tiktok.com/tiktokstudio/upload')) await fail(`opened ${tiktok.url()}`);
+  const answer = await studio.waitForFunction(() => window.answer, null, { timeout: 5000 }).then((h) => h.jsonValue()).catch(() => null);
+  if (!answer?.ok) await fail(`the studio got no "opened" answer: ${JSON.stringify(answer)}`);
+  console.log('ok  the studio hears back that TikTok opened');
   await tiktok.waitForSelector('#reach-tiktok-note:has-text("Saved in your Downloads")', { timeout: 20_000 })
     .catch(async () => fail(`no Downloads note: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
   if (await tiktok.evaluate(() => document.getElementById('f').files.length)) await fail('touched TikTok\'s file picker');

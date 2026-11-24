@@ -7,8 +7,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'open-tiktok' && msg.job) {
     chrome.tabs.create({ url: UPLOAD_URL }, (tab) => {
       if (tab?.id !== undefined) chrome.storage.session.set({ [key(tab.id)]: msg.job });
+      reply({ ok: true });
     });
-    return false;
+    return true; // answers once the tab is open
   }
   if (msg?.type === 'save-video' && typeof msg.url === 'string' && msg.url.startsWith('https://')) {
     // Plan B when TikTok refuses the added video: save it, so the owner can pick it with TikTok's button.

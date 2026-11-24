@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Reach Studio TikTok helper",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Saves your Reach Studio video for TikTok's upload page and fills Claude's caption after you pick it. You press Post.",
   "permissions": [
     "storage",
