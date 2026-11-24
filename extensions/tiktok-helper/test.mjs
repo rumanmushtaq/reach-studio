@@ -19,15 +19,33 @@ const clip = path.join(dir, 'clip.mp4');
 spawnSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=320x240:rate=10', clip]);
 const bytes = await readFile(clip);
 
-// A stand-in for TikTok's upload page: a file picker, then a caption editor that starts with the file name.
-const tiktokPage = `<!doctype html><body><input type="file" accept="video/*" id="f">
-<div id="cap" contenteditable="true" style="display:none;min-height:40px;border:1px solid #999"></div>
+// A stand-in for TikTok's upload page: a file picker, then TikTok's kind of caption editor (Draft.js, loaded
+// from a CDN, so this test needs internet) holding the file name, inside an error screen like TikTok's.
+const CDN = 'https://cdn.jsdelivr.net/npm';
+const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><body><input type="file" accept="video/*" id="f"><div id="root"></div>
+<script src="${CDN}/react@16.14.0/umd/react.production.min.js"></script>
+<script src="${CDN}/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+<script src="${CDN}/immutable@3.8.2/dist/immutable.min.js"></script>
+<script src="${CDN}/draft-js@0.11.7/dist/Draft.min.js"></script>
 <script>
+  window.errors = [];
+  const { Editor, EditorState, ContentState } = Draft;
+  class Boundary extends React.Component {
+    constructor(p) { super(p); this.state = { crashed: false }; }
+    static getDerivedStateFromError() { return { crashed: true }; }
+    componentDidCatch(e) { errors.push(e.message); }
+    render() { return this.state.crashed ? React.createElement('h1', { id: 'crash' }, 'Something went wrong') : this.props.children; }
+  }
+  function Caption({ name }) {
+    const [state, setState] = React.useState(() => EditorState.createWithContent(ContentState.createFromText(name)));
+    window.draftText = () => state.getCurrentContent().getPlainText('\\n');
+    return React.createElement(Editor, { editorState: state, onChange: setState });
+  }
   document.getElementById('f').addEventListener('change', (e) => {
-    const cap = document.getElementById('cap');
-    setTimeout(() => { cap.style.display = 'block'; cap.textContent = e.target.files[0].name.replace(/\\.mp4$/, ''); }, 500);
+    const name = e.target.files[0].name.replace(/\\.mp4$/, '');
+    setTimeout(() => ReactDOM.render(React.createElement(Boundary, null, React.createElement(Caption, { name })), document.getElementById('root')), 500);
   });
-</script></body>`;
+</script></body></html>`;
 const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><script>
   addEventListener('message', (e) => { if (e.data?.type === 'reach-studio:tiktok-answer') window.answer = e.data; });
   document.getElementById('go').onclick = () => window.postMessage({ type: 'reach-studio:tiktok-post',
@@ -81,9 +99,17 @@ try {
   await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
   await tiktok.waitForSelector('#reach-tiktok-note:has-text("Ready")', { timeout: 20_000 })
     .catch(async () => fail(`no "Ready" after picking: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
-  const caption = await tiktok.evaluate(() => document.getElementById('cap').innerText);
-  if (caption.replace(/\s+/g, ' ').trim() !== CAPTION.replace(/\s+/g, ' ').trim()) await fail(`caption is ${JSON.stringify(caption)}`);
-  console.log('ok  caption replaced the file name after the person picked the video');
+  // The editor's own text, not just what it shows: TikTok crashes when the two differ.
+  const caption = await tiktok.evaluate(() => window.draftText());
+  if (caption !== CAPTION) await fail(`the editor holds ${JSON.stringify(caption)}`);
+  console.log('ok  the editor took the caption in place of the file name');
+  await tiktok.click('.public-DraftEditor-content');
+  await tiktok.keyboard.press('Control+End');
+  await tiktok.keyboard.type(' 🎉');
+  await tiktok.waitForTimeout(300);
+  if (await tiktok.$('#crash')) await fail(`the page crashed: ${await tiktok.evaluate(() => errors.join('; '))}`);
+  if (await tiktok.evaluate(() => window.draftText()) !== `${CAPTION} 🎉`) await fail('typing after the caption went wrong');
+  console.log('ok  the person can keep typing; no crash');
   console.log('PASS');
 } finally {
   await context.close();

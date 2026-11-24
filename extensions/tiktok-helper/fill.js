@@ -30,27 +30,32 @@ const reachFill = (() => {
   const fileName = (job) => (/\.(mp4|mov|webm)$/i.test(job.fileName) ? job.fileName : `${job.fileName || 'video'}.mp4`);
   const flat = (s) => s.replace(/\s+/g, ' ').trim();
 
-  /** Replaces the caption. Typing first; if the editor ignores it, pasting, which TikTok's editor accepts. */
+  /**
+   * Replaces the caption by pasting it, the one way TikTok's Draft.js editor really takes text in: typing
+   * through the page changes only what is shown, and the editor crashes the page when it notices.
+   */
   async function putCaption(editor, text) {
-    const start = flat(text).slice(0, 24);
-    const selectAllIn = () => {
-      editor.focus();
+    editor.focus();
+    // Select the editor's own text (not the box around it), and let the editor read that selection.
+    const texts = [];
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    if (texts.length) {
       const range = document.createRange();
-      range.selectNodeContents(editor);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
+      range.setStart(texts[0], 0);
+      range.setEnd(texts[texts.length - 1], texts[texts.length - 1].length);
       sel.addRange(range);
-    };
-    selectAllIn();
-    document.execCommand('insertText', false, text);
-    await pause(300);
-    if (flat(editor.innerText).includes(start)) { step('caption typed'); return true; }
-    selectAllIn();
+    }
+    editor.dispatchEvent(new Event('select', { bubbles: true }));
+    document.dispatchEvent(new Event('selectionchange'));
+    await pause(100);
     const data = new DataTransfer();
     data.setData('text/plain', text);
     editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-    await pause(300);
-    const ok = flat(editor.innerText).includes(start);
+    await pause(400);
+    const ok = flat(editor.innerText) === flat(text);
     step(ok ? 'caption pasted' : `caption not taken; box shows "${flat(editor.innerText).slice(0, 60)}"`);
     return ok;
   }
