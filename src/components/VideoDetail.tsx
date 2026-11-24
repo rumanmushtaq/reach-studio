@@ -19,6 +19,7 @@ import { EARLY_UPLOAD, formatSlot, formatTime, IG_STAGE, slotProblem } from '@/l
 import { applyResult, Field, TextInput } from './forms';
 import { useAction, useMoveSlot } from './query';
 import { SlotPicker, type Taken } from './SlotPicker';
+import { TikTokButton } from './TikTokButton';
 import { ConfirmButton, Countdown, Icon, Pill, PlatformBadge, useToast } from './ui';
 
 type Props = {
@@ -137,7 +138,8 @@ export function VideoDetail(props: Props) {
                     <div className="inline" style={{ marginTop: post?.url || post?.state === 'failed' ? 6 : 0 }}>
                       {post?.url && <a className="small" style={{ fontWeight: 700 }} href={post.url} target="_blank" rel="noreferrer">Open on {PLATFORM_NAMES[p]}</a>}
                       {post?.state === 'failed' && on && connected[p] && <button className="btn sm dark" disabled={pending} onClick={() => run(() => retry(post.id))}>Retry</button>}
-                      {!connected[p] && on && <Link className="small" style={{ fontWeight: 700 }} href="/accounts">Connect</Link>}
+                      {!connected[p] && on && p !== 'tiktok' && <Link className="small" style={{ fontWeight: 700 }} href="/accounts">Connect</Link>}
+                      {p === 'tiktok' && !connected[p] && post?.state !== 'live' && <TikTokButton videoId={video.id} disabled={!!video.fileDeletedAt} />}
                     </div>
                   </div>
                   <label>
@@ -163,6 +165,8 @@ export function VideoDetail(props: Props) {
 function platformLine(p: Platform, on: boolean, post: PostRow | undefined, slot: number | null, connected: string | null, shape: string, duration: number | null): string {
   if (!on) return shape === 'horizontal' && (p === 'instagram' || p === 'tiktok') ? 'Off: long horizontal videos fit YouTube and Facebook best' : 'Off';
   if (post?.state === 'live') return 'Live';
+  // Without Upload-Post, TikTok is posted by the owner with the TikTok helper extension.
+  if (!connected && p === 'tiktok') return `Post it yourself with the TikTok helper${slot ? `, at ${formatSlot(slot)}` : ''}`;
   // Posts for a platform that is not connected wait for it, so connecting it is all that is needed.
   if (!connected) return slot && slot <= now() ? 'Not connected · connect it to post now, or untick it' : 'Not connected · posts once you connect it';
   if (post?.state === 'failed') return 'Failed';

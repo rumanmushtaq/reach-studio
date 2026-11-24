@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Reach Studio TikTok helper",
+  "version": "1.0.0",
+  "description": "Opens TikTok's upload page with your Reach Studio video and Claude's caption filled in. You press Post.",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://reach-studio-five.vercel.app/*", "http://localhost:3100/*"],
+      "js": ["studio.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.tiktok.com/tiktokstudio/upload*",
+        "https://www.tiktok.com/creator-center/upload*",
+        "https://www.tiktok.com/upload*"
+      ],
+      "js": ["fill.js", "tiktok.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

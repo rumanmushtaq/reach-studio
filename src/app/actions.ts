@@ -12,7 +12,7 @@ import * as repo from '@/lib/repo';
 import { normaliseSeo, PLATFORMS, type Platform } from '@/lib/seo';
 import { retryPost } from '@/lib/services';
 import { canBook } from '@/lib/slots';
-import { deletePrefix, deleteKey, fileSize, uploadTarget } from '@/lib/storage';
+import { deletePrefix, deleteKey, downloadUrl, fileSize, uploadTarget } from '@/lib/storage';
 import type { UploadTarget } from '@/lib/browser-video';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
@@ -95,6 +95,26 @@ export async function saveSeo(videoId: string, seo: unknown): Promise<Result> {
   // The owner's own text wins: a Claude rewrite still waiting for the helper is dropped.
   await repo.updateVideo(videoId, { seo: normaliseSeo(seo, video), claudeWantedAt: null, claudeClaimedAt: null });
   return ok();
+}
+
+/** What the TikTok helper extension needs to fill TikTok's upload page: the file and Claude's caption. */
+export type TikTokJob = { name: string; fileName: string; videoUrl: string; caption: string };
+
+export async function tiktokJob(videoId: string): Promise<{ ok: true; job: TikTokJob } | { ok: false; error: string }> {
+  const video = await repo.getVideo(videoId);
+  if (!video) return { ok: false, error: 'This video was removed.' };
+  if (video.fileDeletedAt) return { ok: false, error: 'The video file was already cleaned up after posting.' };
+  if (!video.seo) return { ok: false, error: 'The text is still being written. Try again in a moment.' };
+  const { caption, hashtags } = video.seo.tiktok;
+  return {
+    ok: true,
+    job: {
+      name: video.name,
+      fileName: video.fileName || `${video.name}.mp4`,
+      videoUrl: await downloadUrl(video.fileKey, 3600),
+      caption: [caption.trim(), hashtags.join(' ')].filter(Boolean).join('\n\n').slice(0, 2200),
+    },
+  };
 }
 
 export async function rewriteSeo(videoId: string): Promise<Result> {

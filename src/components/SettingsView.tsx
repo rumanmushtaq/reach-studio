@@ -15,6 +15,7 @@ import { QUARTER_HOURS, timeLabel } from '@/lib/slots';
 import { applyResult, Field, FormError, TextInput } from './forms';
 import { ClaudeCard } from './ClaudeCard';
 import { JobRunnerCard } from './JobRunnerCard';
+import { TikTokHelperCard } from './TikTokHelperCard';
 import { TwoStepCard } from './TwoStepCard';
 import { PlatformBadge, useToast } from './ui';
 
@@ -115,6 +116,7 @@ export function SettingsView({ times, channel, niche, links, email, twoStepOn, h
       <div className="stack">
       <JobRunnerCard late={latePosts} />
       <ClaudeCard seenAt={helperSeenAt} now={now} />
+      <TikTokHelperCard />
 
       <form className="card" onSubmit={submitPassword} aria-labelledby="pw" noValidate>
         <h2 id="pw">Sign-in</h2>

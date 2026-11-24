@@ -12,6 +12,8 @@ let repo: typeof import('@/lib/repo');
 beforeAll(async () => {
   process.chdir(await mkdtemp(path.join(os.tmpdir(), 'reach-actions-')));
   process.env.SUPABASE_DATABASE_URL = 'memory://';
+  process.env.STUDIO_SECRET = 'test-secret'; // signs local file links
+  delete process.env.CLOUDINARY_URL;
   delete process.env.GITHUB_ACTIONS_TOKEN;
   [actions, repo] = await Promise.all([import('./actions'), import('@/lib/repo')]);
 });
@@ -45,5 +47,19 @@ describe('Rewrite with Claude', { timeout: 60_000 }, () => {
     const r = await actions.rewriteSeo('sent');
     expect(r).toEqual({ ok: false, error: expect.stringContaining('already uploaded') });
     expect((await repo.getVideo('sent'))?.claudeWantedAt).toBeNull();
+  });
+});
+
+describe('Post to TikTok (helper extension)', { timeout: 60_000 }, () => {
+  it('hands the helper the video link and the TikTok caption with its hashtags', async () => {
+    await addVideo('tt', 'waiting');
+    await repo.updateVideo('tt', { seo: { ...(await import('@/lib/seo')).draftSeo({ name: 'Gholu', note: '', shape: 'vertical' }), tiktok: { caption: 'Gholu ki shararat!', hashtags: ['#gholu', '#urducartoon'] } } });
+    const r = await actions.tiktokJob('tt');
+    expect(r).toEqual({ ok: true, job: { name: 'Gholu', fileName: 'g.mp4', videoUrl: expect.stringContaining('videos/tt/g.mp4'), caption: 'Gholu ki shararat!\n\n#gholu #urducartoon' } });
+  });
+
+  it('says why when the file is gone', async () => {
+    await repo.updateVideo('tt', { fileDeletedAt: Date.now() });
+    expect(await actions.tiktokJob('tt')).toEqual({ ok: false, error: expect.stringContaining('cleaned up') });
   });
 });

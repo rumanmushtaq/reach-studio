@@ -204,6 +204,13 @@ While the app is in development mode it can post to Pages you manage, which cove
 
 ### 7. TikTok
 
+Free: the **TikTok helper** browser extension (`extensions/tiktok-helper`, steps in **Settings → TikTok
+helper**). On a video page press **Post to TikTok**: it opens TikTok's upload page in your browser, adds the
+video and Claude's caption, and you press Post. TikTok only lets audited apps post publicly and does not audit
+personal upload tools, so the helper never presses Post itself. Test: `node extensions/tiktok-helper/test.mjs`.
+
+Paid alternative, fully automatic:
+
 Sign up at upload-post.com, connect your TikTok there, and create an API key. In the studio, go to
 **Accounts → TikTok** and enter the key and the profile name you gave it on Upload-Post.
 
