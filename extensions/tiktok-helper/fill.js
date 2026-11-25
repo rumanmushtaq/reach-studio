@@ -88,6 +88,7 @@ const reachFill = (() => {
     }
     box.style.background = tone === 'done' ? '#0f7b4a' : tone === 'bad' ? '#b42318' : '#1d2433';
     box.querySelector('#reach-tiktok-msg').textContent = `Reach Studio: ${text}`;
+    box.dataset.steps = log.slice(-12).join(' | '); // the latest steps, for tests and a look in DevTools
     return box;
   }
 
@@ -131,6 +132,8 @@ const reachFill = (() => {
   const shown = (el) => el && visible(el);
   const two = (n) => String(n).padStart(2, '0');
   const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const TIME = /^\d{1,2}:\d{2}$/;
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
   /** Clicks like a person does: pointer and mouse events, then the click. */
   function press(el) {
@@ -151,61 +154,127 @@ const reachFill = (() => {
     return year && month >= 0 ? year * 12 + month : null;
   }
 
-  /** The visible element whose own text is exactly `text`, inside `root`. */
-  const byText = (text, root = document) =>
-    [...root.querySelectorAll('label, span, div, p, button')].find((el) => shown(el) && textOf(el).toLowerCase() === text.toLowerCase() && [...el.children].every((c) => textOf(c).toLowerCase() !== text.toLowerCase()));
+  /** An element's own text: its direct text, not its children's. */
+  const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join('').replace(/\s+/g, ' ').trim();
+  /** Visible elements that hold text themselves, like a label or a list item. */
+  const leaves = (root = document) => [...(root.body ?? root).querySelectorAll('*')].filter((el) => shown(el) && ownText(el) && ownText(el) === textOf(el));
 
-  /** What TikTok's date and time boxes show now. */
-  const scheduleShows = () => [...document.querySelectorAll('[class*="date-picker"], [class*="time-picker"]')]
-    .map((el) => el.querySelector('input')?.value || textOf(el)).join(' ');
+  /** The visible element whose own text is exactly `text`. */
+  const byText = (text) => leaves().find((el) => textOf(el).toLowerCase() === text.toLowerCase());
+
+  /** The biggest box around `el` that still shows only `el`'s text (TikTok's clickable field). */
+  function fieldOf(el) {
+    let box = el;
+    while (box.parentElement && textOf(box.parentElement) === textOf(el)) box = box.parentElement;
+    return box;
+  }
+
+  /** TikTok's time and date fields under "When to post", found by what they show: "03:10" and "2026-11-25". */
+  function scheduleFields() {
+    const all = leaves();
+    const time = all.find((el) => TIME.test(textOf(el)) || TIME.test(el.querySelector?.('input')?.value ?? ''));
+    const date = all.find((el) => DATE.test(textOf(el)) || DATE.test(el.querySelector?.('input')?.value ?? ''));
+    const inputs = [...document.querySelectorAll('input')].filter(shown);
+    return {
+      time: time ? fieldOf(time) : inputs.find((i) => TIME.test(i.value)) ?? null,
+      date: date ? fieldOf(date) : inputs.find((i) => DATE.test(i.value)) ?? null,
+    };
+  }
+  const fieldValue = (el) => (el?.tagName === 'INPUT' ? el.value : el?.querySelector('input')?.value || textOf(el));
+
+  /** A list whose items read exactly `values` in order, like TikTok's hour or minute column. */
+  function listOf(values) {
+    const items = leaves().filter((el) => values.includes(textOf(el)));
+    for (const item of items) {
+      const list = item.parentElement;
+      const texts = [...list.children].map(textOf);
+      if (values.every((v) => texts.includes(v))) return list;
+      const outer = list.parentElement;
+      if (outer && values.every((v) => [...outer.children].map(textOf).includes(v))) return outer;
+    }
+    return null;
+  }
+  const HOURS = Array.from({ length: 24 }, (_, h) => two(h));
+  const MINUTES = Array.from({ length: 12 }, (_, i) => two(i * 5));
+
+  /** The calendar around its month title: the smallest box that also holds day 1 and day 28. */
+  function calendarOf(title) {
+    for (let box = title; box; box = box.parentElement) {
+      const texts = leaves(box).map(textOf);
+      if (texts.includes('1') && texts.includes('28')) return box;
+    }
+    return document;
+  }
+
+  /** The calendar's day cells in page order, from the shown month's 1st (days before it belong to last month). */
+  function monthDays(root) {
+    const cells = leaves(root).filter((el) => /^\d{1,2}$/.test(textOf(el)) && Number(textOf(el)) >= 1 && Number(textOf(el)) <= 31);
+    const first = cells.findIndex((el) => textOf(el) === '1');
+    return first < 0 ? [] : cells.slice(first);
+  }
+  const disabled = (el) => el.matches('[aria-disabled="true"], [disabled]') || /disabled|invalid/i.test(`${el.className} ${el.parentElement?.className ?? ''}`);
 
   /**
-   * Sets TikTok's "When to post" to Schedule at `at`: the Schedule option, a day in its calendar, then an hour
-   * and minute in its time lists. Only clicks, like a person, and stops at anything unexpected. True when the
-   * boxes then show that date and time. TikTok's picker uses this browser's clock, and so does `at`.
+   * Sets TikTok's "When to post" to Schedule at `at`: the Schedule option, then the time field's hour and
+   * minute columns, then the day in the date field's calendar. Only clicks, like a person, and stops at anything
+   * unexpected. True when the fields then show that time and date. TikTok's picker uses this browser's clock,
+   * and so does `at`.
    */
   async function schedule(at) {
     const d = new Date(at);
     const want = { date: `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`, time: `${two(d.getHours())}:${two(d.getMinutes())}` };
     const option = byText('Schedule');
     if (!option) { step('schedule: no Schedule option'); return false; }
-    const radio = option.closest('label')?.querySelector('input[type="radio"]') ?? option.closest('label') ?? option;
-    press(radio);
-    const dateBox = await waitFor(() => [...document.querySelectorAll('[class*="date-picker"]')].find(shown), 5000);
-    if (!dateBox) { step('schedule: no date box after choosing Schedule'); return false; }
-    press(dateBox.querySelector('input') ?? dateBox);
-    await pause(400);
-    for (let i = 0; i < 14; i++) {
-      const title = [...document.querySelectorAll('[class*="month-title"], [class*="month"]')].find((el) => shown(el) && monthOf(textOf(el)) !== null);
-      const showing = title && monthOf(textOf(title));
-      if (!showing) { step('schedule: no month in the calendar'); return false; }
-      const target = d.getFullYear() * 12 + d.getMonth();
-      if (showing === target) break;
-      const arrows = [...document.querySelectorAll('[class*="arrow"]')].filter(shown);
-      if (arrows.length < 2) { step('schedule: no month arrows'); return false; }
-      press(showing < target ? arrows[arrows.length - 1] : arrows[0]);
+    press(option.closest('label')?.querySelector('input[type="radio"]') ?? option.closest('label') ?? option);
+    const fields = await waitFor(() => { const f = scheduleFields(); return f.time && f.date ? f : null; }, 5000);
+    if (!fields) { step('schedule: no time or date field after choosing Schedule'); return false; }
+    step(`schedule fields show ${fieldValue(fields.time)} and ${fieldValue(fields.date)}`);
+
+    // Time: open the field, then click the hour and the minute in their columns.
+    if (fieldValue(fields.time) !== want.time) {
+      press(fields.time);
+      const hours = await waitFor(() => listOf(HOURS), 3000);
+      if (!hours) { step('schedule: the time field opened no hour list'); return false; }
+      const hour = [...hours.querySelectorAll('*')].find((el) => textOf(el) === two(d.getHours()) && [...el.children].every((c) => !textOf(c)));
+      if (!hour) { step(`schedule: hour ${two(d.getHours())} not in the list`); return false; }
+      press(hour);
       await pause(300);
+      if (!listOf(MINUTES)) { press(scheduleFields().time ?? fields.time); await pause(400); } // the list closed after the hour
+      const minutes = listOf(MINUTES);
+      const minute = minutes && [...minutes.querySelectorAll('*')].find((el) => textOf(el) === two(d.getMinutes()) && [...el.children].every((c) => !textOf(c)));
+      if (!minute) { step(`schedule: minute ${two(d.getMinutes())} not in the list (TikTok steps by 5)`); return false; }
+      press(minute);
+      await pause(400);
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     }
-    const day = [...document.querySelectorAll('[class*="day"]')].find((el) => shown(el) && textOf(el) === String(d.getDate()) && !/disabled|invalid|outside|other/i.test(el.className));
-    if (!day) { step(`schedule: day ${d.getDate()} not offered`); return false; }
-    press(day);
-    await pause(400);
-    const timeBox = [...document.querySelectorAll('[class*="time-picker"]')].find(shown);
-    if (!timeBox) { step('schedule: no time box'); return false; }
-    press(timeBox.querySelector('input') ?? timeBox);
-    await pause(400);
-    const pick = (selector, value) => [...document.querySelectorAll(selector)].find((el) => shown(el) && [value, String(Number(value))].includes(textOf(el)));
-    const hour = pick('[class*="timepicker-left"], [class*="hour"]', two(d.getHours()));
-    if (!hour) { step(`schedule: hour ${two(d.getHours())} not offered`); return false; }
-    press(hour);
-    await pause(300);
-    const minute = pick('[class*="timepicker-right"], [class*="minute"]', two(d.getMinutes()));
-    if (!minute) { step(`schedule: minute ${two(d.getMinutes())} not offered (TikTok steps by 5)`); return false; }
-    press(minute);
-    await pause(400);
-    const boxes = scheduleShows();
-    const ok = boxes.includes(want.date) && boxes.includes(want.time);
-    step(ok ? `scheduled ${want.date} ${want.time}` : `schedule boxes show "${boxes}", wanted ${want.date} ${want.time}`);
+
+    // Date: open the field, move to the right month, then click the day.
+    const dateField = scheduleFields().date ?? fields.date;
+    if (fieldValue(dateField) !== want.date) {
+      press(dateField);
+      await pause(400);
+      const target = d.getFullYear() * 12 + d.getMonth();
+      const findTitle = () => leaves().find((el) => monthOf(textOf(el)) !== null && !DATE.test(textOf(el)));
+      for (let i = 0; i < 14; i++) {
+        const title = findTitle();
+        const showing = title ? monthOf(textOf(title)) : target; // no title: assume the month that is open
+        if (showing === target) break;
+        // The arrows sit beside the title: textless clickable boxes in the same row.
+        const row = [...title.parentElement.children].filter((el) => el !== title && shown(el));
+        if (row.length < 2) { step('schedule: no month arrows beside the calendar title'); return false; }
+        press(showing < target ? row[row.length - 1] : row[0]);
+        await pause(300);
+      }
+      const title = findTitle();
+      const day = monthDays(title ? calendarOf(title) : document).find((el) => textOf(el) === String(d.getDate()) && !disabled(el));
+      if (!day) { step(`schedule: day ${d.getDate()} not offered in the calendar`); return false; }
+      press(day);
+      await pause(400);
+    }
+
+    const now = scheduleFields();
+    const ok = fieldValue(now.time) === want.time && fieldValue(now.date) === want.date;
+    step(ok ? `scheduled ${want.date} ${want.time}` : `schedule fields show ${fieldValue(now.time)} ${fieldValue(now.date)}, wanted ${want.time} ${want.date}`);
     return ok;
   }
 

@@ -28,48 +28,57 @@ const bytes = await readFile(clip);
 const CDN = 'https://cdn.jsdelivr.net/npm';
 const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><body><input type="file" accept="video/*" id="f"><div id="root"></div>
 <div><div>When to post</div>
-  <label><input type="radio" name="when" checked><span>Now</span></label>
-  <label><input type="radio" name="when" id="sch"><span>Schedule</span></label>
+  <label class="x9a"><input type="radio" name="when" checked><span>Now</span></label>
+  <label class="x9a"><input type="radio" name="when" id="sch"><span>Schedule</span></label>
   <div id="pickers" style="display:none">
-    <div class="date-picker-input"><input id="date" readonly></div>
-    <div class="time-picker-input"><input id="time" readonly></div>
+    <div class="q1z" id="timeField"><svg width="12" height="12"></svg><span id="timeText"></span><svg width="12" height="12"></svg></div>
+    <div class="q1z" id="dateField"><svg width="12" height="12"></svg><span id="dateText"></span><svg width="12" height="12"></svg></div>
   </div>
-  <div id="cal" class="calendar-wrapper" style="display:none"><span class="arrow" id="prev">‹</span><span class="month-title" id="mt"></span><span class="arrow" id="next">›</span><div class="days-wrapper" id="days"></div></div>
-  <div id="tp" style="display:none"><div id="hours"></div><div id="mins"></div></div>
+  <div id="timePop" class="p7k" style="display:none"><div class="c3r" id="hours"></div><div class="c3r" id="mins"></div></div>
+  <div id="cal" class="p7k" style="display:none">
+    <div class="h2b"><span class="b8n" id="prev"><svg width="10" height="10"></svg></span><span class="t5m" id="mt"></span><span class="b8n" id="next"><svg width="10" height="10"></svg></span></div>
+    <div class="w4d"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+    <div class="g6y" id="days"></div>
+  </div>
 </div>
 <script>
-  // Stand-in for TikTok's schedule picker: a calendar (15 minutes to 10 days ahead) and 5-minute time lists.
+  // Stand-in for TikTok's schedule picker, laid out like the real one: time then date fields showing their
+  // values, an hour and a 5-minute column, and a calendar (15 minutes to 10 days ahead) with arrow buttons.
   const pad = (n) => String(n).padStart(2, '0');
   const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  let view = new Date(); view.setDate(1);
   const M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  let view = new Date(); view.setDate(1);
+  const T = () => document.getElementById('timeText'), D = () => document.getElementById('dateText');
   function drawCal() {
     document.getElementById('mt').textContent = M[view.getMonth()] + ' ' + view.getFullYear();
     const days = document.getElementById('days'); days.innerHTML = '';
+    const lead = view.getDay(), prevLast = new Date(view.getFullYear(), view.getMonth(), 0).getDate();
+    for (let i = lead - 1; i >= 0; i--) { const el = document.createElement('span'); el.className = 'k0 k0-disabled'; el.textContent = prevLast - i; days.append(el); }
     const last = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
     const today = new Date(); today.setHours(0, 0, 0, 0);
     for (let i = 1; i <= last; i++) {
       const d = new Date(view.getFullYear(), view.getMonth(), i);
       const ok = d >= today && d - today <= 10 * 864e5;
-      const el = document.createElement('span'); el.textContent = i; el.className = 'day ' + (ok ? 'valid' : 'disabled');
-      if (ok) el.onclick = () => { document.getElementById('date').value = ymd(d); document.getElementById('cal').style.display = 'none'; };
-      days.append(el, ' ');
+      const el = document.createElement('span'); el.className = ok ? 'k0' : 'k0 k0-disabled'; el.textContent = i;
+      if (ok) el.onclick = () => { D().textContent = ymd(d); document.getElementById('cal').style.display = 'none'; };
+      days.append(el);
     }
   }
   document.getElementById('sch').addEventListener('change', () => {
-    document.getElementById('pickers').style.display = 'block';
-    document.getElementById('date').value = ymd(new Date());
-    document.getElementById('time').value = '10:00';
+    document.getElementById('pickers').style.display = 'flex';
+    const soon = new Date(Date.now() + 20 * 60e3);
+    T().textContent = pad(soon.getHours()) + ':' + pad(Math.ceil(soon.getMinutes() / 5) * 5 % 60);
+    D().textContent = ymd(new Date());
   });
-  document.getElementById('date').onclick = () => { document.getElementById('cal').style.display = 'block'; drawCal(); };
+  document.getElementById('dateField').onclick = () => { document.getElementById('cal').style.display = 'block'; drawCal(); };
   document.getElementById('prev').onclick = () => { view.setMonth(view.getMonth() - 1); drawCal(); };
   document.getElementById('next').onclick = () => { view.setMonth(view.getMonth() + 1); drawCal(); };
-  document.getElementById('time').onclick = () => {
-    const tp = document.getElementById('tp'); tp.style.display = 'block';
-    const set = (part, v) => { const [h, m] = document.getElementById('time').value.split(':'); document.getElementById('time').value = part === 'h' ? v + ':' + m : h + ':' + v; };
-    document.getElementById('hours').innerHTML = ''; document.getElementById('mins').innerHTML = '';
-    for (let h = 0; h < 24; h++) { const el = document.createElement('span'); el.className = 'tiktok-timepicker-left'; el.textContent = pad(h); el.onclick = () => set('h', pad(h)); document.getElementById('hours').append(el, ' '); }
-    for (let m = 0; m < 60; m += 5) { const el = document.createElement('span'); el.className = 'tiktok-timepicker-right'; el.textContent = pad(m); el.onclick = () => set('m', pad(m)); document.getElementById('mins').append(el, ' '); }
+  document.getElementById('timeField').onclick = () => {
+    document.getElementById('timePop').style.display = 'flex';
+    const hours = document.getElementById('hours'), mins = document.getElementById('mins');
+    hours.innerHTML = ''; mins.innerHTML = '';
+    for (let h = 0; h < 24; h++) { const el = document.createElement('div'); el.className = 'o5'; el.textContent = pad(h); el.onclick = () => { T().textContent = pad(h) + ':' + T().textContent.split(':')[1]; }; hours.append(el); }
+    for (let m = 0; m < 60; m += 5) { const el = document.createElement('div'); el.className = 'o5'; el.textContent = pad(m); el.onclick = () => { T().textContent = T().textContent.split(':')[0] + ':' + pad(m); document.getElementById('timePop').style.display = 'none'; }; mins.append(el); }
   };
 </script>
 <script src="${CDN}/react@16.14.0/umd/react.production.min.js"></script>
@@ -147,8 +156,8 @@ try {
 
   await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
   await tiktok.waitForSelector('#reach-tiktok-note:has-text("scheduled for")', { timeout: 30_000 })
-    .catch(async () => fail(`not scheduled: ${await tiktok.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
-  const when = await tiktok.evaluate(() => ({ schedule: document.getElementById('sch').checked, date: document.getElementById('date').value, time: document.getElementById('time').value }));
+    .catch(async () => fail(`not scheduled: ${await tiktok.locator('#reach-tiktok-note').getAttribute('data-steps').catch(() => 'none')}`));
+  const when = await tiktok.evaluate(() => ({ schedule: document.getElementById('sch').checked, date: document.getElementById('dateText').textContent, time: document.getElementById('timeText').textContent }));
   if (!when.schedule || when.date !== SLOT_DATE || when.time !== '08:45') await fail(`schedule boxes show ${JSON.stringify(when)}, wanted ${SLOT_DATE} 08:45`);
   console.log(`ok  scheduled itself for the studio slot: ${when.date} ${when.time}`);
   // The editor's own text, not just what it shows: TikTok crashes when the two differ.
