@@ -16,12 +16,22 @@ const HELPER_ANSWER = 'reach-studio:tiktok-answer';
 
 const SITE_NAMES: Record<HelperSite, string> = { tiktok: 'TikTok', facebook: 'Facebook' };
 
-/** Asks the helper to open the site; resolves with its answer, or a timeout after 5 seconds. */
+/**
+ * Asks the helper to open the site; resolves with its answer, or a timeout after 5 seconds. After the helper is
+ * updated, a stale copy left in this page answers at once with an error, so an error waits a moment for the
+ * current helper's success.
+ */
 function askHelper(job: unknown): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
-    const done = (r: { ok: boolean; error?: string }) => { window.removeEventListener('message', onAnswer); clearTimeout(timer); resolve(r); };
-    const onAnswer = (e: MessageEvent) => { if (e.source === window && e.data?.type === HELPER_ANSWER) done({ ok: !!e.data.ok, error: e.data.error }); };
-    const timer = setTimeout(() => done({ ok: false, error: 'The posting helper did not answer. Reload this page, then try again.' }), 5000);
+    let failed: { ok: false; error?: string } | null = null;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    const done = (r: { ok: boolean; error?: string }) => { window.removeEventListener('message', onAnswer); clearTimeout(timer); clearTimeout(grace); resolve(r); };
+    const onAnswer = (e: MessageEvent) => {
+      if (e.source !== window || e.data?.type !== HELPER_ANSWER) return;
+      if (e.data.ok) return done({ ok: true });
+      if (!failed) { failed = { ok: false, error: e.data.error }; grace = setTimeout(() => done(failed!), 2000); }
+    };
+    const timer = setTimeout(() => done(failed ?? { ok: false, error: 'The posting helper did not answer. Reload this page, then try again.' }), 5000);
     window.addEventListener('message', onAnswer);
     window.postMessage({ type: HELPER_MESSAGE, job }, window.location.origin);
   });
