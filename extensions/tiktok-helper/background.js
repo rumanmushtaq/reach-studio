@@ -1,18 +1,22 @@
-// Opens TikTok's upload page for a video from Reach Studio, and hands that tab its job (the video link and
-// caption) once the page is ready. Jobs live in session storage, so they survive the worker going to sleep.
-const UPLOAD_URL = 'https://www.tiktok.com/tiktokstudio/upload?from=reach-studio';
+// Opens the upload page (TikTok's, or Facebook's Create reel) for a video from Reach Studio, and hands that tab
+// its job (the video link and caption) once the page is ready. Jobs live in session storage, so they survive the
+// worker going to sleep.
+const UPLOAD_URLS = {
+  tiktok: 'https://www.tiktok.com/tiktokstudio/upload?from=reach-studio',
+  facebook: 'https://www.facebook.com/reels/create/?from=reach-studio',
+};
 const key = (tabId) => `job:${tabId}`;
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'open-tiktok' && msg.job) {
-    chrome.tabs.create({ url: UPLOAD_URL }, (tab) => {
+    chrome.tabs.create({ url: UPLOAD_URLS[msg.job.site] ?? UPLOAD_URLS.tiktok }, (tab) => {
       if (tab?.id !== undefined) chrome.storage.session.set({ [key(tab.id)]: msg.job });
       reply({ ok: true });
     });
     return true; // answers once the tab is open
   }
   if (msg?.type === 'save-video' && typeof msg.url === 'string' && msg.url.startsWith('https://')) {
-    // Plan B when TikTok refuses the added video: save it, so the owner can pick it with TikTok's button.
+    // Save the video, so the owner can pick it with the site's own button (sites break when an extension adds it).
     const filename = String(msg.filename || 'reach-video.mp4').replace(/[\\/:*?"<>|]+/g, '-');
     chrome.downloads.download({ url: msg.url, filename, conflictAction: 'uniquify' }, (id) => reply({ id: id ?? null }));
     return true;

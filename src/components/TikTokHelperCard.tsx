@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CopyLine } from './ClaudeCard';
 
-// How to install the TikTok helper extension (extensions/tiktok-helper), and whether this browser has it.
+// How to install the posting helper extension (extensions/tiktok-helper), and whether this browser has it.
 export function TikTokHelperCard() {
   const [installed, setInstalled] = useState(false);
   useEffect(() => {
@@ -15,13 +15,14 @@ export function TikTokHelperCard() {
   return (
     <section className="card claude-card" id="tiktok-helper" aria-labelledby="tiktok-helper-h">
       <div className="row-between">
-        <h2 id="tiktok-helper-h">TikTok helper</h2>
+        <h2 id="tiktok-helper-h">Posting helper: TikTok and Facebook</h2>
         <span className={`pill ${installed ? 'ok' : ''}`}>{installed ? 'Installed in this browser' : 'Not installed'}</span>
       </div>
       <p className="small muted">
-        Free TikTok posting. On a video page press <b>Post to TikTok</b>: the helper opens TikTok and saves the video to
-        your Downloads. Click <b>Select video</b> and pick it; the helper writes Claude&apos;s caption and sets the
-        video&apos;s time under <b>Schedule</b>, and you press <b>Schedule</b>. It never posts by itself, so TikTok sees you
+        Free posting where no app may post: TikTok, and Facebook reels on a personal profile. On a video page press
+        <b> Post to TikTok</b> or <b>Post to Facebook</b>: the helper opens the site and saves the video to your
+        Downloads. Pick it with the site&apos;s button; the helper writes Claude&apos;s caption (and on TikTok sets the
+        video&apos;s time under <b>Schedule</b>), and you press Post. It never posts by itself, so the site sees you
         posting.
       </p>
       <ol className="claude-steps">
@@ -40,7 +41,7 @@ export function TikTokHelperCard() {
           <span className="small muted">Press <b>Load unpacked</b> and choose the <code>reach-tiktok-helper</code> folder from step 1.</span>
         </li>
         <li>
-          <b>Sign in to TikTok in the same browser</b>
+          <b>Sign in to TikTok and Facebook in the same browser</b>
           <span className="small muted">Then reload this page: the label above says Installed.</span>
         </li>
       </ol>

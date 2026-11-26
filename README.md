@@ -201,6 +201,8 @@ Cartoons are uploaded as **made for kids**, as YouTube requires. That turns comm
 4. Set `META_APP_ID` and `META_APP_SECRET`. Set `META_CONFIG_ID` too if you made a Login configuration.
 
 While the app is in development mode it can post to Pages you manage, which covers your own channel.
+Facebook lets no app post to a personal profile: for reels on a profile, use the posting helper (section 7),
+whose **Post to Facebook** button works like TikTok's.
 
 ### 7. TikTok
 

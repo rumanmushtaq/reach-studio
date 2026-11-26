@@ -22,17 +22,17 @@ const reachFill = (() => {
   const videoInput = () => document.querySelector('input[type="file"][accept*="video"]') ?? document.querySelector('input[type="file"]');
 
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  /** TikTok's caption box: its Draft.js editor, else the first visible editable box. */
+  /** The caption box: TikTok's Draft.js editor or Facebook's Lexical one, else the first visible editable box. */
   const captionEditor = () =>
-    [...document.querySelectorAll('.public-DraftEditor-content[contenteditable="true"]')].find(visible)
+    [...document.querySelectorAll('.public-DraftEditor-content[contenteditable="true"], [data-lexical-editor="true"][contenteditable="true"]')].find(visible)
     ?? [...document.querySelectorAll('[contenteditable="true"]')].find(visible) ?? null;
 
   const fileName = (job) => (/\.(mp4|mov|webm)$/i.test(job.fileName) ? job.fileName : `${job.fileName || 'video'}.mp4`);
   const flat = (s) => s.replace(/\s+/g, ' ').trim();
 
   /**
-   * Replaces the caption by pasting it, the one way TikTok's Draft.js editor really takes text in: typing
-   * through the page changes only what is shown, and the editor crashes the page when it notices.
+   * Replaces the caption by pasting it, the one way TikTok's Draft.js and Facebook's Lexical editors really
+   * take text in: typing through the page changes only what is shown, and the editor breaks when it notices.
    */
   async function putCaption(editor, text) {
     editor.focus();
@@ -42,12 +42,18 @@ const reachFill = (() => {
     while (walker.nextNode()) texts.push(walker.currentNode);
     const sel = window.getSelection();
     sel.removeAllRanges();
+    const range = document.createRange();
     if (texts.length) {
-      const range = document.createRange();
       range.setStart(texts[0], 0);
       range.setEnd(texts[texts.length - 1], texts[texts.length - 1].length);
-      sel.addRange(range);
+    } else {
+      // An empty box: put the cursor in its first line (Lexical keeps an empty paragraph there).
+      let first = editor;
+      while (first.firstElementChild && first.firstElementChild.tagName !== 'BR') first = first.firstElementChild;
+      range.setStart(first, 0);
+      range.collapse(true);
     }
+    sel.addRange(range);
     editor.dispatchEvent(new Event('select', { bubbles: true }));
     document.dispatchEvent(new Event('selectionchange'));
     await pause(100);
@@ -290,17 +296,20 @@ const reachFill = (() => {
   });
 
   /** The whole job: save the video, wait for the owner to pick it, then write the caption. */
-  async function fill(job, { editorTimeoutMs = 120_000, saveVideo = async () => {} } = {}) {
+  async function fill(job, { editorTimeoutMs, saveVideo = async () => {} } = {}) {
+    const facebook = job.site === 'facebook';
+    const site = facebook ? 'Facebook' : 'TikTok';
     const picked = ownerPicks(); // listen first, in case the owner is quick
     note(`Saving "${job.name}" to your Downloads…`);
     await saveVideo(job, fileName(job));
-    note(`Saved in your Downloads as "${fileName(job)}". Click "Select video" and choose it. The caption fills by itself after.`);
+    note(`Saved in your Downloads as "${fileName(job)}". Click "${facebook ? 'Add video' : 'Select video'}" and choose it. The caption fills by itself after.`);
     await picked;
-    note('Got it. Waiting for TikTok to show the caption box…');
-    const editor = await waitFor(captionEditor, editorTimeoutMs);
+    // Facebook shows its description box only after Next (sometimes twice); TikTok shows it at once.
+    note(facebook ? 'Got it. Press Next until you see the description box; the helper writes the caption there.' : 'Got it. Waiting for TikTok to show the caption box…');
+    const editor = await waitFor(captionEditor, editorTimeoutMs ?? (facebook ? 10 * 60_000 : 120_000));
     if (!editor) {
       await navigator.clipboard?.writeText(job.caption).catch(() => {});
-      note('TikTok did not show the caption box. The caption is copied: paste it yourself.', 'bad');
+      note(`${site} did not show the caption box. The caption is copied: paste it yourself.`, 'bad');
       return false;
     }
     await pause(1500); // TikTok first writes the file name into the caption; replace it after that
@@ -308,6 +317,11 @@ const reachFill = (() => {
       await navigator.clipboard?.writeText(job.caption).catch(() => {});
       note('Could not write the caption. It is copied: paste it yourself.', 'bad');
       return false;
+    }
+    if (facebook) {
+      // Facebook does not let a personal profile schedule a reel: it goes out when the owner presses Post.
+      note(`Caption added. Check it, then press Post${job.slotLabel ? ` (its studio time is ${job.slotLabel})` : ''}.`, 'done');
+      return true;
     }
     const ahead = job.slotAt ? job.slotAt - Date.now() : 0;
     if (ahead >= 15 * 60_000 && ahead <= 10 * 24 * 3600_000) {

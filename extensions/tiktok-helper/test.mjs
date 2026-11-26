@@ -13,6 +13,7 @@ const EXT = process.env.TIKTOK_HELPER_DIR || path.dirname(fileURLToPath(import.m
 const STUDIO = 'https://reach-studio-five.vercel.app/videos/test';
 const VIDEO = 'https://res.cloudinary.com/test/video/upload/videos/v1/video';
 const CAPTION = 'Ghulo ki shararat! Remote kahan hai?\n\n#urducartoon #ghulo #kidscartoon';
+const FB_CAPTION = 'Ghulo ka remote kahan gaya?\n\nAmmi ki chappal aur ek naughty bacha.\n\n#urducartoon #ghulo';
 const SLOT = new Date(Date.now() + Number(process.env.SLOT_DAYS ?? 2) * 24 * 3600_000); SLOT.setHours(8, 45, 0, 0); // SLOT_DAYS=8 checks the calendar moving to another month
 const SLOT_AT = SLOT.getTime();
 const pad = (n) => String(n).padStart(2, '0');
@@ -104,8 +105,28 @@ const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><bod
     setTimeout(() => ReactDOM.render(React.createElement(Boundary, null, React.createElement(Caption, { name })), document.getElementById('root')), 500);
   });
 </script></body></html>`;
-const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><script>
+// A stand-in for Facebook's Create reel page: a file picker, a Next button, then Facebook's kind of description
+// editor (Lexical, from a CDN), empty.
+const facebookPage = `<!doctype html><html><head><meta charset="utf-8"></head><body><input type="file" accept="video/*" id="f">
+<button id="next" style="display:none">Next</button><div id="desc" style="display:none;min-height:40px;border:1px solid #999"></div>
+<script type="module">
+  import { createEditor, $getRoot } from '${CDN}/lexical@0.17.1/+esm';
+  import { registerPlainText } from '${CDN}/@lexical/plain-text@0.17.1/+esm';
+  document.getElementById('f').addEventListener('change', () => { setTimeout(() => { document.getElementById('next').style.display = 'inline'; }, 300); });
+  document.getElementById('next').onclick = () => {
+    const box = document.getElementById('desc');
+    box.style.display = 'block';
+    box.contentEditable = 'true';
+    const editor = createEditor({ namespace: 'reel', onError: (e) => { throw e; } });
+    editor.setRootElement(box);
+    registerPlainText(editor);
+    window.lexText = () => editor.getEditorState().read(() => $getRoot().getTextContent());
+  };
+</script></body></html>`;
+const studioPage = `<!doctype html><body><button id="go">Post to TikTok</button><button id="fb">Post to Facebook</button><script>
   addEventListener('message', (e) => { if (e.data?.type === 'reach-studio:tiktok-answer') window.answer = e.data; });
+  document.getElementById('fb').onclick = () => window.postMessage({ type: 'reach-studio:tiktok-post',
+    job: { site: 'facebook', name: 'Ghulo Ep01', fileName: 'Ghulo_Ep01.mp4', videoUrl: '${VIDEO}', caption: ${JSON.stringify(FB_CAPTION)}, slotAt: ${SLOT_AT}, slotLabel: 'Sat 29 Nov 8:45 AM' } }, location.origin);
   document.getElementById('go').onclick = () => window.postMessage({ type: 'reach-studio:tiktok-post',
     job: { name: 'Ghulo Ep01', fileName: 'Ghulo_Ep01.mp4', videoUrl: '${VIDEO}', caption: ${JSON.stringify(CAPTION)}, slotAt: ${SLOT_AT}, slotLabel: 'Sat 29 Nov 8:45 AM' } }, location.origin);
 </script></body>`;
@@ -119,6 +140,7 @@ const context = await chromium.launchPersistentContext(await mkdtemp(path.join(o
 const fail = async (msg) => { console.error(`FAIL: ${msg}`); await context.close(); process.exit(1); };
 try {
   await context.route('https://www.tiktok.com/**', (r) => r.fulfill({ contentType: 'text/html', body: tiktokPage }));
+  await context.route('https://www.facebook.com/**', (r) => r.fulfill({ contentType: 'text/html', body: facebookPage }));
   await context.route('https://reach-studio-five.vercel.app/**', (r) => r.fulfill({ contentType: 'text/html', body: studioPage }));
   await context.route(`${VIDEO}*`, (r) => r.fulfill({ contentType: 'video/mp4', body: bytes, headers: { 'access-control-allow-origin': '*' } }));
 
@@ -171,6 +193,27 @@ try {
   if (await tiktok.$('#crash')) await fail(`the page crashed: ${await tiktok.evaluate(() => errors.join('; '))}`);
   if (await tiktok.evaluate(() => window.draftText()) !== `${CAPTION} 🎉`) await fail('typing after the caption went wrong');
   console.log('ok  the person can keep typing; no crash');
+  await tiktok.close();
+
+  // Facebook profile reel: same hand-off, then the description after Next, and no schedule.
+  const [fb] = await Promise.all([context.waitForEvent('page'), studio.click('#fb')]);
+  await fb.waitForLoadState().catch(() => {});
+  await fb.goto('https://www.facebook.com/reels/create/?from=reach-studio');
+  await fb.waitForSelector('#reach-tiktok-note:has-text("Add video")', { timeout: 20_000 })
+    .catch(async () => fail(`no Facebook pick note: ${await fb.locator('#reach-tiktok-note').textContent().catch(() => 'none')}`));
+  console.log('ok  Facebook: opens Create reel and saves the video');
+  await fb.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
+  await fb.waitForSelector('#reach-tiktok-note:has-text("Press Next")', { timeout: 10_000 });
+  await fb.click('#next');
+  await fb.waitForSelector('#reach-tiktok-note:has-text("Caption added")', { timeout: 20_000 })
+    .catch(async () => fail(`Facebook caption not added: ${await fb.locator('#reach-tiktok-note').getAttribute('data-steps').catch(() => 'none')}`));
+  const fbText = await fb.evaluate(() => window.lexText());
+  if (fbText.replace(/\s+/g, ' ').trim() !== FB_CAPTION.replace(/\s+/g, ' ').trim()) await fail(`Facebook's editor holds ${JSON.stringify(fbText)}`);
+  await fb.click('#desc');
+  await fb.keyboard.press('Control+End');
+  await fb.keyboard.type(' 🎉');
+  if (!(await fb.evaluate(() => window.lexText())).endsWith(' 🎉')) await fail('typing after the Facebook caption went wrong');
+  console.log('ok  Facebook: the editor took the caption after Next; no schedule asked');
   console.log('PASS');
 } finally {
   await context.close();

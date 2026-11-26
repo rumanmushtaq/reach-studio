@@ -14,6 +14,7 @@ import { retryPost } from '@/lib/services';
 import { canBook, formatSlot } from '@/lib/slots';
 import { deletePrefix, deleteKey, downloadUrl, fileSize, uploadTarget } from '@/lib/storage';
 import type { UploadTarget } from '@/lib/browser-video';
+import type { VideoRow } from '@/lib/db/schema';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const ok = (message?: string): Result => ({ ok: true, message });
@@ -97,25 +98,38 @@ export async function saveSeo(videoId: string, seo: unknown): Promise<Result> {
   return ok();
 }
 
-/** What the TikTok helper extension needs to fill TikTok's upload page: the file and Claude's caption. */
-export type TikTokJob = {
+/** Sites the posting helper extension (extensions/tiktok-helper) fills by hand-off: TikTok, and Facebook profiles. */
+export type HelperSite = 'tiktok' | 'facebook';
+
+/** What the posting helper needs to fill a site's upload page: the file and Claude's caption for that site. */
+export type HelperJob = {
+  site: HelperSite;
   name: string; fileName: string; videoUrl: string; caption: string;
-  slotAt: number | null; slotLabel: string | null; // the video's posting time, to schedule it on TikTok
+  slotAt: number | null; slotLabel: string | null; // the video's posting time, to schedule it where the site allows
 };
 
-export async function tiktokJob(videoId: string): Promise<{ ok: true; job: TikTokJob } | { ok: false; error: string }> {
+/** Claude's text for the site, as one caption: TikTok's caption, or Facebook's title, description and hashtags. */
+function helperCaption(seo: NonNullable<VideoRow['seo']>, site: HelperSite): string {
+  const parts = site === 'tiktok'
+    ? [seo.tiktok.caption, seo.tiktok.hashtags.join(' ')]
+    : [seo.facebook.title, seo.facebook.description, seo.facebook.hashtags.join(' ')];
+  return parts.map((p) => p.trim()).filter(Boolean).join('\n\n').slice(0, 2200);
+}
+
+export async function helperJob(videoId: string, site: HelperSite): Promise<{ ok: true; job: HelperJob } | { ok: false; error: string }> {
+  if (site !== 'tiktok' && site !== 'facebook') return { ok: false, error: 'Unknown site' };
   const video = await repo.getVideo(videoId);
   if (!video) return { ok: false, error: 'This video was removed.' };
   if (video.fileDeletedAt) return { ok: false, error: 'The video file was already cleaned up after posting.' };
   if (!video.seo) return { ok: false, error: 'The text is still being written. Try again in a moment.' };
-  const { caption, hashtags } = video.seo.tiktok;
   return {
     ok: true,
     job: {
+      site,
       name: video.name,
       fileName: video.fileName || `${video.name}.mp4`,
       videoUrl: await downloadUrl(video.fileKey, 3600),
-      caption: [caption.trim(), hashtags.join(' ')].filter(Boolean).join('\n\n').slice(0, 2200),
+      caption: helperCaption(video.seo, site),
       slotAt: video.slotAt,
       slotLabel: video.slotAt ? formatSlot(video.slotAt) : null,
     },

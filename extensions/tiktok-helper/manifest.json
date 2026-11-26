@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Reach Studio TikTok helper",
-  "version": "1.5.1",
-  "description": "Saves your Reach Studio video for TikTok, then fills Claude's caption and the studio's schedule time after you pick it. You press Schedule.",
+  "name": "Reach Studio posting helper",
+  "version": "1.6.0",
+  "description": "Posts Reach Studio videos where no app may: saves the video for TikTok or Facebook, fills Claude's caption after you pick it, and sets TikTok's schedule. You press Post.",
   "permissions": [
     "storage",
     "downloads"
@@ -25,11 +25,13 @@
       "matches": [
         "https://www.tiktok.com/tiktokstudio/upload*",
         "https://www.tiktok.com/creator-center/upload*",
-        "https://www.tiktok.com/upload*"
+        "https://www.tiktok.com/upload*",
+        "https://www.facebook.com/reels/create*",
+        "https://web.facebook.com/reels/create*"
       ],
       "js": [
         "fill.js",
-        "tiktok.js"
+        "site.js"
       ],
       "run_at": "document_idle",
       "all_frames": true

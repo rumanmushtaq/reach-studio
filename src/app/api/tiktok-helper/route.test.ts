@@ -14,7 +14,7 @@ describe('TikTok helper download', () => {
     await writeFile(path.join(dir, 'h.zip'), Buffer.from(await res.arrayBuffer()));
     execFileSync('python3', ['-c', 'import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])', path.join(dir, 'h.zip'), dir]);
     const folder = path.join(dir, 'reach-tiktok-helper');
-    expect((await readdir(folder)).sort()).toEqual(['background.js', 'fill.js', 'manifest.json', 'studio.js', 'tiktok.js']);
+    expect((await readdir(folder)).sort()).toEqual(['background.js', 'fill.js', 'manifest.json', 'site.js', 'studio.js']);
     const manifest = JSON.parse(await readFile(path.join(folder, 'manifest.json'), 'utf8'));
     const scripts = manifest.content_scripts.flatMap((c: { js: string[] }) => c.js).concat(manifest.background.service_worker);
     expect(scripts.every((f: string) => existsSync(path.join(folder, f)))).toBe(true);

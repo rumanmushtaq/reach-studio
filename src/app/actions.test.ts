@@ -50,16 +50,23 @@ describe('Rewrite with Claude', { timeout: 60_000 }, () => {
   });
 });
 
-describe('Post to TikTok (helper extension)', { timeout: 60_000 }, () => {
+describe('Post with the helper extension', { timeout: 60_000 }, () => {
   it('hands the helper the video link and the TikTok caption with its hashtags', async () => {
     await addVideo('tt', 'waiting');
     await repo.updateVideo('tt', { seo: { ...(await import('@/lib/seo')).draftSeo({ name: 'Gholu', note: '', shape: 'vertical' }), tiktok: { caption: 'Gholu ki shararat!', hashtags: ['#gholu', '#urducartoon'] } } });
-    const r = await actions.tiktokJob('tt');
-    expect(r).toEqual({ ok: true, job: { name: 'Gholu', fileName: 'g.mp4', videoUrl: expect.stringContaining('videos/tt/g.mp4'), caption: 'Gholu ki shararat!\n\n#gholu #urducartoon', slotAt: expect.any(Number), slotLabel: expect.stringMatching(/^\w{3} \d{1,2} \w{3} \d{1,2}:\d{2} (AM|PM)$/) } });
+    const r = await actions.helperJob('tt', 'tiktok');
+    expect(r).toEqual({ ok: true, job: { site: 'tiktok', name: 'Gholu', fileName: 'g.mp4', videoUrl: expect.stringContaining('videos/tt/g.mp4'), caption: 'Gholu ki shararat!\n\n#gholu #urducartoon', slotAt: expect.any(Number), slotLabel: expect.stringMatching(/^\w{3} \d{1,2} \w{3} \d{1,2}:\d{2} (AM|PM)$/) } });
+  });
+
+  it('gives Facebook its title, description and hashtags as one caption', async () => {
+    const seo = (await repo.getVideo('tt'))!.seo!;
+    await repo.updateVideo('tt', { seo: { ...seo, facebook: { title: 'Gholu ka mela', description: 'Rocket uda!', hashtags: ['#gholu'], pinned: '' } } });
+    const r = await actions.helperJob('tt', 'facebook');
+    expect(r.ok && r.job).toMatchObject({ site: 'facebook', caption: 'Gholu ka mela\n\nRocket uda!\n\n#gholu' });
   });
 
   it('says why when the file is gone', async () => {
     await repo.updateVideo('tt', { fileDeletedAt: Date.now() });
-    expect(await actions.tiktokJob('tt')).toEqual({ ok: false, error: expect.stringContaining('cleaned up') });
+    expect(await actions.helperJob('tt', 'tiktok')).toEqual({ ok: false, error: expect.stringContaining('cleaned up') });
   });
 });
