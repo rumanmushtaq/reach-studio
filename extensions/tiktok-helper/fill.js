@@ -30,20 +30,27 @@ const reachFill = (() => {
   const fileName = (job) => (/\.(mp4|mov|webm)$/i.test(job.fileName) ? job.fileName : `${job.fileName || 'video'}.mp4`);
   const flat = (s) => s.replace(/\s+/g, ' ').trim();
 
-  /**
-   * Replaces the caption by pasting it, the one way TikTok's Draft.js and Facebook's Lexical editors really
-   * take text in: typing through the page changes only what is shown, and the editor breaks when it notices.
-   */
-  async function putCaption(editor, text) {
-    editor.focus();
-    // Select the editor's own text (not the box around it), and let the editor read that selection.
+  /** Presses a key `times` times in the focused editor, from the page's own world (page.js), one at a time. */
+  function pressInPage(key, code, times) {
+    const id = `${Date.now()}-${Math.random()}`;
+    return new Promise((resolve) => {
+      const done = () => { window.removeEventListener('message', onDone); clearTimeout(timer); resolve(); };
+      const onDone = (e) => { if (e.source === window && e.data?.type === 'reach:pressed' && e.data.id === id) done(); };
+      const timer = setTimeout(done, 15_000);
+      window.addEventListener('message', onDone);
+      window.postMessage({ type: 'reach:press', key, code, times, id }, window.location.origin);
+    });
+  }
+
+  /** Puts the cursor in the editor: over its text when `all`, else at the start of its first line. */
+  function selectIn(editor, all) {
     const texts = [];
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) texts.push(walker.currentNode);
     const sel = window.getSelection();
     sel.removeAllRanges();
     const range = document.createRange();
-    if (texts.length) {
+    if (all && texts.length) {
       range.setStart(texts[0], 0);
       range.setEnd(texts[texts.length - 1], texts[texts.length - 1].length);
     } else {
@@ -56,10 +63,34 @@ const reachFill = (() => {
     sel.addRange(range);
     editor.dispatchEvent(new Event('select', { bubbles: true }));
     document.dispatchEvent(new Event('selectionchange'));
-    await pause(100);
+  }
+
+  function paste(editor, text) {
     const data = new DataTransfer();
     data.setData('text/plain', text);
     editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }
+
+  /**
+   * Replaces the caption by pasting it, the one way TikTok's Draft.js and Facebook's Lexical editors really
+   * take text in: typing through the page changes only what is shown, and the editor breaks when it notices.
+   * TikTok first writes the file name in and its editor may keep its cursor after it whatever the page selects,
+   * so the box is emptied with Backspace and Delete presses, which the editor handles itself, before the paste.
+   */
+  async function putCaption(editor, text) {
+    editor.focus();
+    const had = flat(editor.innerText);
+    if (had) {
+      selectIn(editor, true);
+      await pause(100);
+      await pressInPage('Backspace', 8, had.length + 2);
+      await pressInPage('Delete', 46, had.length + 2);
+      await pause(200);
+      step(flat(editor.innerText) ? `box not emptied; shows "${flat(editor.innerText).slice(0, 60)}"` : `emptied the ${had.length} letters already there`);
+    }
+    selectIn(editor, false);
+    await pause(100);
+    paste(editor, text);
     await pause(400);
     const ok = flat(editor.innerText) === flat(text);
     step(ok ? 'caption pasted' : `caption not taken; box shows "${flat(editor.innerText).slice(0, 60)}"`);
@@ -313,26 +344,24 @@ const reachFill = (() => {
       return false;
     }
     await pause(1500); // TikTok first writes the file name into the caption; replace it after that
-    if (!(await putCaption(captionEditor() ?? editor, job.caption))) {
-      await navigator.clipboard?.writeText(job.caption).catch(() => {});
-      note('Could not write the caption. It is copied: paste it yourself.', 'bad');
-      return false;
-    }
+    const captioned = await putCaption(captionEditor() ?? editor, job.caption);
+    if (!captioned) await navigator.clipboard?.writeText(job.caption).catch(() => {});
+    const captionNote = captioned ? 'Caption added' : 'Could not write the caption: it is copied, so select the box, press Ctrl+A, then Ctrl+V';
     if (facebook) {
       // Facebook does not let a personal profile schedule a reel: it goes out when the owner presses Post.
-      note(`Caption added. Check it, then press Post${job.slotLabel ? ` (its studio time is ${job.slotLabel})` : ''}.`, 'done');
-      return true;
+      note(`${captionNote}. Check it, then press Post${job.slotLabel ? ` (its studio time is ${job.slotLabel})` : ''}.`, captioned ? 'done' : 'bad');
+      return captioned;
     }
     const ahead = job.slotAt ? job.slotAt - Date.now() : 0;
     if (ahead >= 15 * 60_000 && ahead <= 10 * 24 * 3600_000) {
-      note('Caption added. Setting the schedule time…');
+      note(`${captionNote}. Setting the schedule time…`, captioned ? 'info' : 'bad');
       if (await schedule(job.slotAt).catch((e) => { step(`schedule: ${e.message}`); return false; })) {
-        note(`Caption added and scheduled for ${job.slotLabel} (Pakistan time). Check them, then press Schedule.`, 'done');
-        return true;
+        note(`${captionNote}. Scheduled for ${job.slotLabel} (Pakistan time). Check them, then press Schedule.`, captioned ? 'done' : 'bad');
+        return captioned;
       }
     }
-    note(`Caption added. ${whenToPost(job)}`, 'done');
-    return true;
+    note(`${captionNote}. ${whenToPost(job)}`, captioned ? 'done' : 'bad');
+    return captioned;
   }
 
   return { waitFor, videoInput, captionEditor, putCaption, note, details, whenToPost, schedule, fill };

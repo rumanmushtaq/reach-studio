@@ -88,6 +88,7 @@ const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><bod
 <script src="${CDN}/draft-js@0.11.7/dist/Draft.min.js"></script>
 <script>
   window.errors = [];
+  for (const type of ['selectionchange', 'select']) addEventListener(type, (e) => { if (!e.isTrusted) e.stopPropagation(); }, true);
   const { Editor, EditorState, ContentState } = Draft;
   class Boundary extends React.Component {
     constructor(p) { super(p); this.state = { crashed: false }; }
@@ -96,7 +97,8 @@ const tiktokPage = `<!doctype html><html><head><meta charset="utf-8"></head><bod
     render() { return this.state.crashed ? React.createElement('h1', { id: 'crash' }, 'Something went wrong') : this.props.children; }
   }
   function Caption({ name }) {
-    const [state, setState] = React.useState(() => EditorState.createWithContent(ContentState.createFromText(name)));
+    // Like TikTok: the cursor sits after the file name, and the editor ignores selections the page makes.
+    const [state, setState] = React.useState(() => EditorState.moveSelectionToEnd(EditorState.createWithContent(ContentState.createFromText(name))));
     window.draftText = () => state.getCurrentContent().getPlainText('\\n');
     return React.createElement(Editor, { editorState: state, onChange: setState });
   }
@@ -177,7 +179,7 @@ try {
   console.log('ok  video saved to Downloads');
 
   await tiktok.setInputFiles('#f', { name: 'Ghulo_Ep01.mp4', mimeType: 'video/mp4', buffer: bytes });
-  await tiktok.waitForSelector('#reach-tiktok-note:has-text("scheduled for")', { timeout: 30_000 })
+  await tiktok.waitForSelector('#reach-tiktok-note:has-text("Caption added. Scheduled for")', { timeout: 30_000 })
     .catch(async () => fail(`not scheduled: ${await tiktok.locator('#reach-tiktok-note').getAttribute('data-steps').catch(() => 'none')}`));
   const when = await tiktok.evaluate(() => ({ schedule: document.getElementById('sch').checked, date: document.getElementById('dateText').textContent, time: document.getElementById('timeText').textContent }));
   if (!when.schedule || when.date !== SLOT_DATE || when.time !== '08:45') await fail(`schedule boxes show ${JSON.stringify(when)}, wanted ${SLOT_DATE} 08:45`);

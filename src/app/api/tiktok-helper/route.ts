@@ -4,7 +4,7 @@ import { zip } from '@/lib/zip';
 
 // Download of the posting helper extension (extensions/tiktok-helper) as a zip, for Settings → TikTok helper.
 // Only the files Chrome needs; the test stays out. next.config.ts ships the folder with this route.
-const FILES = ['manifest.json', 'background.js', 'studio.js', 'fill.js', 'site.js'];
+const FILES = ['manifest.json', 'background.js', 'studio.js', 'fill.js', 'site.js', 'page.js'];
 
 export async function GET() {
   const dir = path.join(process.cwd(), 'extensions', 'tiktok-helper');
